@@ -1,6 +1,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { sanitizeAuthError, type WorkspaceAuthService } from "../auth/oauth.js";
+import { confirmMutation } from "../extension/confirmation.js";
 import {
   createGmailClientProvider,
   type GmailClientFactory,
@@ -12,6 +13,22 @@ export interface GmailDependencies {
   readonly auth: WorkspaceAuthService;
   readonly clientFactory?: GmailClientFactory;
   readonly clientProvider?: GmailClientProvider;
+}
+
+let gmailMutationQueue = Promise.resolve();
+
+async function serializeGmailMutation<T>(mutation: () => Promise<T>): Promise<T> {
+  const previous = gmailMutationQueue;
+  let release!: () => void;
+  gmailMutationQueue = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await previous;
+  try {
+    return await mutation();
+  } finally {
+    release();
+  }
 }
 
 function failure(error: unknown, action: string) {
@@ -148,6 +165,114 @@ export function registerGmail(pi: ExtensionAPI, dependencies: GmailDependencies)
       } catch (error) {
         return failure(error, "read the Gmail message");
       }
+    },
+  });
+
+  pi.registerTool({
+    name: "gws_gmail_move_message",
+    label: "Google Workspace Gmail Move Message",
+    description:
+      "Move one Gmail message to Inbox, Trash, Archive, or Spam. Moving out of Trash restores it first and unrelated labels are preserved. Execute only after an explicit user request; interactive mode requires confirmation.",
+    promptSnippet:
+      "gws_gmail_move_message: move one Gmail message after explicit request and confirmation",
+    promptGuidelines: [
+      "Use gws_gmail_move_message only when the user explicitly asks to move one Gmail message to Inbox, Trash, Archive, or Spam.",
+      "Before using gws_gmail_move_message, identify the source message by sender, subject, and date and state the destination; interactive mode confirms, while headless use requires explicit caller consent.",
+      "When moving multiple Gmail messages, call gws_gmail_move_message one message at a time, never in parallel.",
+    ],
+    parameters: Type.Object({
+      id: Type.String({ minLength: 1, description: "Gmail message ID, usually from gws_gmail_search" }),
+      destination: Type.Union([
+        Type.Literal("inbox"),
+        Type.Literal("trash"),
+        Type.Literal("archive"),
+        Type.Literal("spam"),
+      ]),
+      reason: Type.Optional(
+        Type.String({ description: "Short explanation of why the message should be moved" }),
+      ),
+    }),
+    async execute(_toolCallId, params, signal, _onUpdate, ctx) {
+      const id = params.id.trim();
+      if (!id) {
+        return {
+          content: [{ type: "text", text: "Gmail message ID must not be blank." }],
+          isError: true,
+          details: { app: "gmail" as const },
+        };
+      }
+
+      return serializeGmailMutation(async () => {
+        try {
+          const client = await clients.getClient();
+          const response = await client.users.messages.get(
+            {
+              userId: "me",
+              id,
+              format: "metadata",
+              metadataHeaders: ["From", "Subject", "Date"],
+            },
+            { signal },
+          );
+          const message = summarizeMessage(response.data);
+          const destination =
+            params.destination[0].toUpperCase() + params.destination.slice(1);
+          const preview = [
+            `Move this Gmail message to ${destination}?`,
+            `From: ${message.from}`,
+            `Subject: ${message.subject}`,
+            `Date: ${message.date}`,
+            `ID: ${id}`,
+            ...(params.reason ? [`Reason: ${params.reason}`] : []),
+          ].join("\n");
+
+          if (!(await confirmMutation(ctx, `Confirm move to ${destination}`, preview))) {
+            return {
+              content: [{ type: "text", text: `Move to ${destination} cancelled by user.` }],
+              details: {
+                app: "gmail" as const,
+                cancelled: true,
+                id,
+                destination: params.destination,
+              },
+            };
+          }
+
+          const previousLabelIds = response.data.labelIds ?? [];
+          let moved;
+          if (params.destination === "trash") {
+            moved = await client.users.messages.trash({ userId: "me", id }, { signal });
+          } else {
+            if (previousLabelIds.includes("TRASH")) {
+              await client.users.messages.untrash({ userId: "me", id }, { signal });
+            }
+            const requestBody =
+              params.destination === "inbox"
+                ? { addLabelIds: ["INBOX"], removeLabelIds: ["SPAM"] }
+                : params.destination === "spam"
+                  ? { addLabelIds: ["SPAM"], removeLabelIds: ["INBOX"] }
+                  : { removeLabelIds: ["INBOX", "SPAM"] };
+            moved = await client.users.messages.modify(
+              { userId: "me", id, requestBody },
+              { signal },
+            );
+          }
+
+          return {
+            content: [{ type: "text", text: `Moved Gmail message ${id} to ${destination}.` }],
+            details: {
+              app: "gmail" as const,
+              id,
+              threadId: moved.data.threadId,
+              destination: params.destination,
+              previousLabelIds,
+              labelIds: moved.data.labelIds,
+            },
+          };
+        } catch (error) {
+          return failure(error, "move the Gmail message");
+        }
+      });
     },
   });
 }

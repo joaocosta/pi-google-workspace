@@ -66,6 +66,9 @@ function mockClient(): GmailClient {
                   },
                 },
         })),
+        modify: vi.fn(async () => ({ data: {} })),
+        trash: vi.fn(async () => ({ data: {} })),
+        untrash: vi.fn(async () => ({ data: {} })),
       },
     },
   };
@@ -76,10 +79,14 @@ async function execute(tool: ToolOptions, params: object, signal?: AbortSignal) 
 }
 
 describe("Gmail read tool registration", () => {
-  it("registers only the two prefixed read tools with explicit prompt guidance", () => {
+  it("registers the prefixed Gmail tools with explicit prompt guidance", () => {
     const { tools } = register({ getClient: vi.fn(async () => mockClient()) });
 
-    expect([...tools.keys()]).toEqual(["gws_gmail_search", "gws_gmail_read_message"]);
+    expect([...tools.keys()]).toEqual([
+      "gws_gmail_search",
+      "gws_gmail_read_message",
+      "gws_gmail_move_message",
+    ]);
     for (const [name, tool] of tools) {
       expect(`${tool.description} ${tool.promptSnippet} ${tool.promptGuidelines?.join(" ")}`).toContain(name);
     }

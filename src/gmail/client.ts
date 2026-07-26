@@ -16,6 +16,18 @@ export interface GmailClient {
         request: gmail_v1.Params$Resource$Users$Messages$Get,
         options?: GmailRequestOptions,
       ): Promise<{ data: gmail_v1.Schema$Message }>;
+      modify(
+        request: gmail_v1.Params$Resource$Users$Messages$Modify,
+        options?: GmailRequestOptions,
+      ): Promise<{ data: gmail_v1.Schema$Message }>;
+      trash(
+        request: gmail_v1.Params$Resource$Users$Messages$Trash,
+        options?: GmailRequestOptions,
+      ): Promise<{ data: gmail_v1.Schema$Message }>;
+      untrash(
+        request: gmail_v1.Params$Resource$Users$Messages$Untrash,
+        options?: GmailRequestOptions,
+      ): Promise<{ data: gmail_v1.Schema$Message }>;
     };
   };
 }
