@@ -29,6 +29,7 @@ describe("extension composition root", () => {
       "gws_gmail_create_reply_draft",
       "gws_gmail_move_message",
       "gws_calendar_list",
+      "gws_calendar_list_events",
     ]);
   });
 });

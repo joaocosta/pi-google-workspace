@@ -12,6 +12,12 @@ export interface CalendarClient {
       options?: CalendarRequestOptions,
     ): Promise<{ data: calendar_v3.Schema$CalendarList }>;
   };
+  readonly events: {
+    list(
+      request: calendar_v3.Params$Resource$Events$List,
+      options?: CalendarRequestOptions,
+    ): Promise<{ data: calendar_v3.Schema$Events }>;
+  };
 }
 
 export type CalendarClientFactory = (authClient: OAuthClient) => CalendarClient;
