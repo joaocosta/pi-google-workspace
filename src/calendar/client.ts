@@ -11,12 +11,24 @@ export interface CalendarClient {
       request: calendar_v3.Params$Resource$Calendarlist$List,
       options?: CalendarRequestOptions,
     ): Promise<{ data: calendar_v3.Schema$CalendarList }>;
+    get(
+      request: calendar_v3.Params$Resource$Calendarlist$Get,
+      options?: CalendarRequestOptions,
+    ): Promise<{ data: calendar_v3.Schema$CalendarListEntry }>;
   };
   readonly events: {
     list(
       request: calendar_v3.Params$Resource$Events$List,
       options?: CalendarRequestOptions,
     ): Promise<{ data: calendar_v3.Schema$Events }>;
+    insert(
+      request: calendar_v3.Params$Resource$Events$Insert,
+      options?: CalendarRequestOptions,
+    ): Promise<{ data: calendar_v3.Schema$Event }>;
+    get(
+      request: calendar_v3.Params$Resource$Events$Get,
+      options?: CalendarRequestOptions,
+    ): Promise<{ data: calendar_v3.Schema$Event }>;
   };
 }
 

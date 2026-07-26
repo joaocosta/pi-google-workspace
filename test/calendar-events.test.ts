@@ -29,8 +29,15 @@ function authService(): WorkspaceAuthService {
 
 function mockClient(eventData: object = { items: [] }): CalendarClient {
   return {
-    calendarList: { list: vi.fn(async () => ({ data: { items: [] } })) },
-    events: { list: vi.fn(async () => ({ data: eventData })) },
+    calendarList: {
+      list: vi.fn(async () => ({ data: { items: [] } })),
+      get: vi.fn(async () => ({ data: {} })),
+    },
+    events: {
+      list: vi.fn(async () => ({ data: eventData })),
+      insert: vi.fn(async () => ({ data: {} })),
+      get: vi.fn(async () => ({ data: {} })),
+    },
   };
 }
 

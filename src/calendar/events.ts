@@ -1,8 +1,10 @@
+import { createHash } from "node:crypto";
 import { DateTime, IANAZone } from "luxon";
 import type { calendar_v3 } from "googleapis";
 
 const LOCAL_DATE_TIME =
   /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?$/;
+const ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1_000;
 
 export interface CalendarTimeDependencies {
@@ -22,13 +24,39 @@ export interface ResolvedEventRange {
   readonly timeMax?: string;
 }
 
+export type CreateEventTimingInput =
+  | {
+      readonly kind: "timed";
+      readonly start: string;
+      readonly end: string;
+      readonly timeZone?: string;
+    }
+  | {
+      readonly kind: "allDay";
+      readonly startDate: string;
+      readonly endDate: string;
+    };
+
+export interface CreateEventInput {
+  readonly summary: string;
+  readonly description?: string;
+  readonly location?: string;
+  readonly timing: CreateEventTimingInput;
+}
+
+export interface BuiltCalendarEvent {
+  readonly requestBody: calendar_v3.Schema$Event;
+  readonly normalizedStart: ReturnType<typeof normalizeEventTime>;
+  readonly normalizedEnd: ReturnType<typeof normalizeEventTime>;
+}
+
 export class CalendarInputError extends Error {}
 
 export function resolveHostTimeZone(): string | undefined {
   return Intl.DateTimeFormat().resolvedOptions().timeZone;
 }
 
-function requireIanaTimeZone(timeZone: string | undefined): string {
+export function requireIanaTimeZone(timeZone: string | undefined): string {
   if (!timeZone || !IANAZone.isValidZone(timeZone)) {
     throw new CalendarInputError(
       "Calendar timeZone must be a valid IANA zone; the host zone could not be used.",
@@ -121,6 +149,83 @@ export function resolveEventRange(
   }
 
   return { timeZone, ...(timeMin ? { timeMin } : {}), ...(timeMax ? { timeMax } : {}) };
+}
+
+/** Produce a stable Google-compatible base32hex-subset ID for one Pi tool call. */
+export function deriveCalendarEventId(toolCallId: string): string {
+  return createHash("sha256").update(toolCallId, "utf8").digest("hex");
+}
+
+function requireIsoDate(value: string, field: string): string {
+  const match = ISO_DATE.exec(value);
+  if (!match) {
+    throw new CalendarInputError(`${field} must be a strict ISO date such as 2026-04-05.`);
+  }
+  const [, year, month, day] = match;
+  const parsed = DateTime.fromObject(
+    { year: Number(year), month: Number(month), day: Number(day) },
+    { zone: "UTC" },
+  );
+  if (
+    !parsed.isValid ||
+    parsed.year !== Number(year) ||
+    parsed.month !== Number(month) ||
+    parsed.day !== Number(day)
+  ) {
+    throw new CalendarInputError(`${field} must be a valid ISO calendar date.`);
+  }
+  return value;
+}
+
+/** Validate core creation input and build the exact Google event body. */
+export function buildCalendarEvent(
+  toolCallId: string,
+  input: CreateEventInput,
+  dependencies: CalendarTimeDependencies = {},
+): BuiltCalendarEvent {
+  const summary = input.summary.trim();
+  if (!summary) {
+    throw new CalendarInputError("Calendar event summary must not be blank.");
+  }
+
+  let start: calendar_v3.Schema$EventDateTime;
+  let end: calendar_v3.Schema$EventDateTime;
+  if (input.timing.kind === "timed") {
+    const timeZone = requireIanaTimeZone(
+      input.timing.timeZone ?? (dependencies.hostTimeZone ?? resolveHostTimeZone)(),
+    );
+    const startInstant = localDateTimeToRfc3339(input.timing.start, timeZone);
+    const endInstant = localDateTimeToRfc3339(input.timing.end, timeZone);
+    if (DateTime.fromISO(startInstant).toMillis() >= DateTime.fromISO(endInstant).toMillis()) {
+      throw new CalendarInputError("Calendar event end must be later than start.");
+    }
+    start = { dateTime: startInstant, timeZone };
+    end = { dateTime: endInstant, timeZone };
+  } else {
+    const startDate = requireIsoDate(input.timing.startDate, "Calendar event startDate");
+    const endDate = requireIsoDate(input.timing.endDate, "Calendar event endDate");
+    if (endDate <= startDate) {
+      throw new CalendarInputError(
+        "Calendar event endDate must be later than startDate and is exclusive.",
+      );
+    }
+    start = { date: startDate };
+    end = { date: endDate };
+  }
+
+  return {
+    requestBody: {
+      id: deriveCalendarEventId(toolCallId),
+      summary,
+      ...(input.description === undefined ? {} : { description: input.description }),
+      ...(input.location === undefined ? {} : { location: input.location }),
+      start,
+      end,
+      reminders: { useDefault: true },
+    },
+    normalizedStart: normalizeEventTime(start),
+    normalizedEnd: normalizeEventTime(end),
+  };
 }
 
 export function normalizeEventTime(value: calendar_v3.Schema$EventDateTime | undefined) {

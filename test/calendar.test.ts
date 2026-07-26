@@ -40,9 +40,12 @@ function mockClient(data: object = { items: [] }): CalendarClient {
   return {
     calendarList: {
       list: vi.fn(async () => ({ data })),
+      get: vi.fn(async () => ({ data: {} })),
     },
     events: {
       list: vi.fn(async () => ({ data: { items: [] } })),
+      insert: vi.fn(async () => ({ data: {} })),
+      get: vi.fn(async () => ({ data: {} })),
     },
   };
 }
@@ -58,6 +61,7 @@ describe("Calendar discovery", () => {
     expect([...tools.keys()]).toEqual([
       "gws_calendar_list",
       "gws_calendar_list_events",
+      "gws_calendar_create_event",
     ]);
     const tool = tools.get("gws_calendar_list")!;
     expect(`${tool.description} ${tool.promptSnippet} ${tool.promptGuidelines?.join(" ")}`).toContain(

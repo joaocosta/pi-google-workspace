@@ -1,14 +1,17 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { sanitizeAuthError, type WorkspaceAuthService } from "../auth/oauth.js";
+import { confirmMutation } from "../extension/confirmation.js";
 import {
   createCalendarClientProvider,
   type CalendarClientFactory,
   type CalendarClientProvider,
 } from "./client.js";
 import {
+  buildCalendarEvent,
   CalendarInputError,
   normalizeCalendarEvent,
+  normalizeEventTime,
   resolveEventRange,
   type CalendarTimeDependencies,
 } from "./events.js";
@@ -20,11 +23,11 @@ export interface CalendarDependencies {
   readonly time?: CalendarTimeDependencies;
 }
 
-function failure(error: unknown, action = "list calendars") {
-  const safe = sanitizeAuthError(
-    error,
-    `Could not ${action}. Run /gws-login calendar if Calendar authentication has expired.`,
-  );
+function failure(error: unknown, action = "list calendars", calendarId?: string) {
+  const fallback = calendarId
+    ? `Could not ${action} on calendar ${calendarId}. Run /gws-login calendar if Calendar authentication has expired or choose a writable calendar.`
+    : `Could not ${action}. Run /gws-login calendar if Calendar authentication has expired.`;
+  const safe = sanitizeAuthError(error, fallback);
   return {
     content: [{ type: "text" as const, text: safe.message }],
     isError: true,
@@ -187,6 +190,170 @@ export function registerCalendar(pi: ExtensionAPI, dependencies: CalendarDepende
           };
         }
         return failure(error, "list calendar events");
+      }
+    },
+  });
+
+  pi.registerTool({
+    name: "gws_calendar_create_event",
+    label: "Google Workspace Calendar Create Event",
+    description:
+      "Create one core-field timed or all-day Calendar event after explicit caller intent and interactive confirmation.",
+    promptSnippet:
+      "gws_calendar_create_event: create a confirmed, timezone-safe Calendar event",
+    promptGuidelines: [
+      "Before using gws_calendar_create_event, show the target calendar and complete event details unless the user already explicitly provided them.",
+      "Timed events require offset-free local start/end values and use an explicit IANA timeZone or the host IANA zone.",
+      "All-day endDate is exclusive. Headless use requires explicit caller consent.",
+    ],
+    parameters: Type.Object({
+      calendarId: Type.Optional(Type.String({ description: "Calendar ID; defaults to primary" })),
+      summary: Type.String({ minLength: 1, description: "Non-empty event title" }),
+      description: Type.Optional(Type.String()),
+      location: Type.Optional(Type.String()),
+      timing: Type.Union([
+        Type.Object({
+          kind: Type.Literal("timed"),
+          start: Type.String({ description: "Offset-free local start date-time" }),
+          end: Type.String({ description: "Offset-free local end date-time" }),
+          timeZone: Type.Optional(Type.String({ description: "IANA time zone" })),
+        }),
+        Type.Object({
+          kind: Type.Literal("allDay"),
+          startDate: Type.String({ description: "ISO start date" }),
+          endDate: Type.String({ description: "Exclusive ISO end date" }),
+        }),
+      ]),
+    }),
+    async execute(toolCallId, params, signal, _onUpdate, ctx) {
+      const calendarId = params.calendarId?.trim() || "primary";
+
+      try {
+        const built = buildCalendarEvent(
+          toolCallId,
+          {
+            summary: params.summary,
+            description: params.description,
+            location: params.location,
+            timing: params.timing,
+          },
+          dependencies.time,
+        );
+        const client = await clients.getClient();
+
+        let calendarName = calendarId;
+        let resolvedCalendarId = calendarId;
+        try {
+          const metadata = await client.calendarList.get({ calendarId }, { signal });
+          calendarName = metadata.data.summary || metadata.data.id || calendarId;
+          resolvedCalendarId = metadata.data.id || calendarId;
+          if (
+            metadata.data.accessRole === "reader" ||
+            metadata.data.accessRole === "freeBusyReader"
+          ) {
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: `Calendar ${calendarName} (${resolvedCalendarId}) is read-only. Choose a writable calendar.`,
+                },
+              ],
+              isError: true,
+              details: { app: "calendar" as const, calendarId },
+            };
+          }
+        } catch (error) {
+          // Metadata improves confirmation but is not authoritative; insert reports access failures.
+          if (signal?.aborted) {
+            throw error;
+          }
+        }
+
+        const description = built.requestBody.description ?? "(none)";
+        const location = built.requestBody.location ?? "(none)";
+        const timing =
+          built.normalizedStart.kind === "allDay"
+            ? [
+                `All-day start: ${built.normalizedStart.date}`,
+                `Exclusive end: ${built.normalizedEnd.kind === "allDay" ? built.normalizedEnd.date : "invalid"}`,
+              ]
+            : [
+                `Start: ${built.normalizedStart.dateTime}`,
+                `End: ${built.normalizedEnd.kind === "dateTime" ? built.normalizedEnd.dateTime : "invalid"}`,
+                `Time zone: ${built.normalizedStart.timeZone}`,
+              ];
+        const preview = [
+          `Calendar: ${calendarName} (${resolvedCalendarId})`,
+          `Summary: ${built.requestBody.summary}`,
+          ...timing,
+          `Description: ${description}`,
+          `Location: ${location}`,
+        ].join("\n");
+
+        if (!(await confirmMutation(ctx, "Confirm Calendar event", preview))) {
+          return {
+            content: [{ type: "text", text: "Calendar event creation cancelled." }],
+            details: { app: "calendar" as const, calendarId, cancelled: true },
+          };
+        }
+
+        let event;
+        let idempotent = false;
+        try {
+          const response = await client.events.insert(
+            { calendarId, requestBody: built.requestBody },
+            { signal },
+          );
+          event = response.data;
+        } catch (error) {
+          const candidate = error as { code?: unknown; status?: unknown; response?: { status?: unknown } };
+          const status = candidate.response?.status ?? candidate.status ?? candidate.code;
+          if (Number(status) !== 409) {
+            return failure(error, "create an event", calendarId);
+          }
+
+          try {
+            const response = await client.events.get(
+              { calendarId, eventId: built.requestBody.id! },
+              { signal },
+            );
+            if (response.data.id !== built.requestBody.id) {
+              throw new Error("The conflicting event did not match the deterministic event ID.");
+            }
+            event = response.data;
+            idempotent = true;
+          } catch (recoveryError) {
+            return failure(recoveryError, "recover a conflicting event", calendarId);
+          }
+        }
+
+        const result = {
+          calendarId,
+          id: event.id ?? built.requestBody.id ?? null,
+          summary: event.summary ?? built.requestBody.summary ?? null,
+          start: normalizeEventTime(event.start ?? built.requestBody.start),
+          end: normalizeEventTime(event.end ?? built.requestBody.end),
+          ...(event.htmlLink ? { htmlLink: event.htmlLink } : {}),
+          ...(idempotent ? { idempotent: true } : {}),
+        };
+        return {
+          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+          details: {
+            app: "calendar" as const,
+            calendarId,
+            eventId: result.id,
+            ...(idempotent ? { idempotent: true } : {}),
+          },
+        };
+      } catch (error) {
+        if (error instanceof CalendarInputError) {
+          return {
+            content: [{ type: "text", text: error.message }],
+            isError: true,
+            details: { app: "calendar" as const },
+          };
+        }
+        return failure(error, "create an event", calendarId);
       }
     },
   });
