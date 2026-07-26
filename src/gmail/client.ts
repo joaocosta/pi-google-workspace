@@ -7,6 +7,12 @@ export interface GmailRequestOptions {
 
 export interface GmailClient {
   readonly users: {
+    readonly drafts: {
+      create(
+        request: gmail_v1.Params$Resource$Users$Drafts$Create,
+        options?: GmailRequestOptions,
+      ): Promise<{ data: gmail_v1.Schema$Draft }>;
+    };
     readonly messages: {
       list(
         request: gmail_v1.Params$Resource$Users$Messages$List,

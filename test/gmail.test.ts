@@ -40,6 +40,7 @@ function register(clientProvider: GmailClientProvider) {
 function mockClient(): GmailClient {
   return {
     users: {
+      drafts: { create: vi.fn(async () => ({ data: {} })) },
       messages: {
         list: vi.fn(async () => ({
           data: {
@@ -85,6 +86,7 @@ describe("Gmail read tool registration", () => {
     expect([...tools.keys()]).toEqual([
       "gws_gmail_search",
       "gws_gmail_read_message",
+      "gws_gmail_create_draft",
       "gws_gmail_move_message",
     ]);
     for (const [name, tool] of tools) {

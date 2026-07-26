@@ -7,6 +7,7 @@ import {
   type GmailClientFactory,
   type GmailClientProvider,
 } from "./client.js";
+import { buildPlainTextMessage, encodeBase64Url, sanitizeHeader } from "./mail.js";
 import { parseMessage, summarizeMessage } from "./messages.js";
 
 export interface GmailDependencies {
@@ -165,6 +166,80 @@ export function registerGmail(pi: ExtensionAPI, dependencies: GmailDependencies)
       } catch (error) {
         return failure(error, "read the Gmail message");
       }
+    },
+  });
+
+  pi.registerTool({
+    name: "gws_gmail_create_draft",
+    label: "Google Workspace Gmail Create Draft",
+    description:
+      "Create a plain-text Gmail draft after explicit caller intent and interactive confirmation. The message remains a draft and is not sent.",
+    promptSnippet: "gws_gmail_create_draft: create a Gmail draft, never send it",
+    promptGuidelines: [
+      "gws_gmail_create_draft only creates drafts; never claim an email was sent.",
+      "Before using gws_gmail_create_draft, show the intended recipients, subject, and full body unless the user already explicitly provided them; headless use requires explicit caller intent.",
+    ],
+    parameters: Type.Object({
+      to: Type.Array(Type.String(), { minItems: 1, description: "Recipient email addresses" }),
+      cc: Type.Optional(Type.Array(Type.String())),
+      bcc: Type.Optional(Type.Array(Type.String())),
+      subject: Type.String(),
+      body: Type.String({ description: "Plain-text email body" }),
+      threadId: Type.Optional(Type.String({ description: "Optional Gmail thread ID" })),
+      inReplyTo: Type.Optional(Type.String({ description: "Optional Message-ID reply header" })),
+      references: Type.Optional(Type.String({ description: "Optional References reply header" })),
+    }),
+    async execute(_toolCallId, params, signal, _onUpdate, ctx) {
+      return serializeGmailMutation(async () => {
+        try {
+          const preview = [
+            "Create this Gmail draft?",
+            `To: ${sanitizeHeader(params.to.join(", "))}`,
+            ...(params.cc?.length ? [`Cc: ${sanitizeHeader(params.cc.join(", "))}`] : []),
+            ...(params.bcc?.length ? [`Bcc: ${sanitizeHeader(params.bcc.join(", "))}`] : []),
+            `Subject: ${sanitizeHeader(params.subject)}`,
+            "",
+            params.body,
+          ].join("\n");
+
+          if (!(await confirmMutation(ctx, "Confirm Gmail draft", preview))) {
+            return {
+              content: [
+                { type: "text" as const, text: "Gmail draft creation cancelled by user; nothing was sent." },
+              ],
+              details: { app: "gmail" as const, cancelled: true },
+            };
+          }
+
+          const client = await clients.getClient();
+          const raw = encodeBase64Url(buildPlainTextMessage(params));
+          const response = await client.users.drafts.create(
+            {
+              userId: "me",
+              requestBody: { message: { raw, threadId: params.threadId } },
+            },
+            { signal },
+          );
+          const draftId = response.data.id;
+          const messageId = response.data.message?.id;
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: `Created Gmail draft ${draftId ?? "unknown"} (message ${messageId ?? "unknown"}). It has not been sent.`,
+              },
+            ],
+            details: {
+              app: "gmail" as const,
+              draftId,
+              messageId,
+              threadId: response.data.message?.threadId ?? params.threadId,
+            },
+          };
+        } catch (error) {
+          return failure(error, "create the Gmail draft");
+        }
+      });
     },
   });
 
