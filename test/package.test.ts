@@ -9,6 +9,11 @@ describe("package presentation", () => {
 
     expect(manifest.files).toEqual(["src", "docs", "README.md", "LICENSE"]);
     expect(manifest.pi).toEqual({ extensions: ["./src/index.ts"] });
+    expect(Object.keys(manifest.dependencies).sort()).toEqual(["googleapis", "luxon"]);
+    expect(Object.keys(manifest.peerDependencies).sort()).toEqual([
+      "@earendil-works/pi-coding-agent",
+      "typebox",
+    ]);
     await Promise.all(
       ["README.md", "LICENSE", "docs/development.md"].map((path) =>
         access(new URL(path, root)),
