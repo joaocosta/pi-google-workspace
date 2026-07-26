@@ -1,0 +1,36 @@
+{
+  "name": "pi-google-workspace",
+  "version": "0.1.0",
+  "description": "Google Workspace tools for Pi with independent Gmail and Calendar authorization.",
+  "type": "module",
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "google-workspace"
+  ],
+  "license": "MIT",
+  "files": [
+    "src"
+  ],
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "googleapis": "^173.0.0"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "typebox": "*"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.0",
+    "vitest": "^4.0.0"
+  },
+  "pi": {
+    "extensions": [
+      "./src/index.ts"
+    ]
+  }
+}

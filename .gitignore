@@ -1,1 +1,4 @@
 .agent-artifacts
+node_modules/
+coverage/
+*.tgz
