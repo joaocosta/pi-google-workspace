@@ -10,7 +10,10 @@
   ],
   "license": "MIT",
   "files": [
-    "src"
+    "src",
+    "docs",
+    "README.md",
+    "LICENSE"
   ],
   "scripts": {
     "test": "vitest run",
