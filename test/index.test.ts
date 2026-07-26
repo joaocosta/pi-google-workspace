@@ -13,11 +13,15 @@ describe("extension composition root", () => {
     });
   });
 
-  it("imports without side effects and registers no features yet", () => {
+  it("imports without I/O and registers only shared auth commands", () => {
     const pi = { registerCommand: vi.fn(), registerTool: vi.fn() };
 
     expect(() => googleWorkspace(pi as never)).not.toThrow();
-    expect(pi.registerCommand).not.toHaveBeenCalled();
+    expect(pi.registerCommand.mock.calls.map(([name]) => name)).toEqual([
+      "gws-login",
+      "gws-status",
+      "gws-logout",
+    ]);
     expect(pi.registerTool).not.toHaveBeenCalled();
   });
 });
