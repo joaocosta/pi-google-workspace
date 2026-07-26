@@ -26,6 +26,7 @@ describe("extension composition root", () => {
       "gws_gmail_search",
       "gws_gmail_read_message",
       "gws_gmail_create_draft",
+      "gws_gmail_create_reply_draft",
       "gws_gmail_move_message",
     ]);
   });

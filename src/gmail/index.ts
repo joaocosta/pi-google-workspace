@@ -9,6 +9,7 @@ import {
 } from "./client.js";
 import { buildPlainTextMessage, encodeBase64Url, sanitizeHeader } from "./mail.js";
 import { parseMessage, summarizeMessage } from "./messages.js";
+import { deriveReplyDraft, GmailReplyDerivationError } from "./reply.js";
 
 export interface GmailDependencies {
   readonly auth: WorkspaceAuthService;
@@ -238,6 +239,117 @@ export function registerGmail(pi: ExtensionAPI, dependencies: GmailDependencies)
           };
         } catch (error) {
           return failure(error, "create the Gmail draft");
+        }
+      });
+    },
+  });
+
+  pi.registerTool({
+    name: "gws_gmail_create_reply_draft",
+    label: "Google Workspace Gmail Create Reply Draft",
+    description:
+      "Create a one-recipient plain-text draft reply in an existing Gmail conversation after explicit caller intent and interactive confirmation. This never sends email.",
+    promptSnippet:
+      "gws_gmail_create_reply_draft: create a threaded Gmail reply draft, never send it",
+    promptGuidelines: [
+      "Use gws_gmail_create_reply_draft instead of gws_gmail_create_draft when replying to an existing message.",
+      "Before using gws_gmail_create_reply_draft, show the source message and complete reply body unless the user already explicitly provided them.",
+      "gws_gmail_create_reply_draft creates exactly one-recipient drafts and never sends email; never claim that a reply was sent. Headless use requires explicit caller consent.",
+    ],
+    parameters: Type.Object({
+      id: Type.String({ minLength: 1, description: "Source Gmail message ID, usually from gws_gmail_search" }),
+      body: Type.String({ description: "Plain-text reply body" }),
+    }),
+    async execute(_toolCallId, params, signal, _onUpdate, ctx) {
+      const parentMessageId = params.id.trim();
+      if (!parentMessageId) {
+        return {
+          content: [{ type: "text" as const, text: "Source Gmail message ID must not be blank." }],
+          isError: true,
+          details: { app: "gmail" as const },
+        };
+      }
+
+      return serializeGmailMutation(async () => {
+        try {
+          const client = await clients.getClient();
+          const sourceResponse = await client.users.messages.get(
+            {
+              userId: "me",
+              id: parentMessageId,
+              format: "metadata",
+              metadataHeaders: ["Reply-To", "From", "Subject", "Message-ID", "References", "Date"],
+            },
+            { signal },
+          );
+          const reply = deriveReplyDraft(sourceResponse.data, parentMessageId);
+          const preview = [
+            "Create this Gmail reply draft?",
+            `Source message ID: ${parentMessageId}`,
+            `Replying to: ${reply.sourceFrom || "unknown sender"}`,
+            `Date: ${reply.sourceDate || "unknown date"}`,
+            `To: ${reply.to}`,
+            `Subject: ${reply.subject}`,
+            "",
+            params.body,
+          ].join("\n");
+
+          if (!(await confirmMutation(ctx, "Confirm Gmail reply draft", preview))) {
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: "Gmail reply draft creation cancelled by user; nothing was sent.",
+                },
+              ],
+              details: { app: "gmail" as const, cancelled: true, parentMessageId },
+            };
+          }
+
+          const raw = encodeBase64Url(
+            buildPlainTextMessage({
+              to: [reply.to],
+              subject: reply.subject,
+              body: params.body,
+              inReplyTo: reply.inReplyTo,
+              references: reply.references,
+            }),
+          );
+          const response = await client.users.drafts.create(
+            {
+              userId: "me",
+              requestBody: { message: { raw, threadId: reply.threadId } },
+            },
+            { signal },
+          );
+          const draftId = response.data.id;
+          const messageId = response.data.message?.id;
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: `Created Gmail reply draft ${draftId ?? "unknown"} in thread ${reply.threadId} (message ${messageId ?? "unknown"}, parent ${parentMessageId}, recipient ${reply.to}, subject ${reply.subject}). It has not been sent.`,
+              },
+            ],
+            details: {
+              app: "gmail" as const,
+              draftId,
+              messageId,
+              parentMessageId,
+              threadId: reply.threadId,
+              to: reply.to,
+              subject: reply.subject,
+            },
+          };
+        } catch (error) {
+          if (error instanceof GmailReplyDerivationError) {
+            return {
+              content: [{ type: "text" as const, text: error.message }],
+              isError: true,
+              details: { app: "gmail" as const, parentMessageId },
+            };
+          }
+          return failure(error, "create the Gmail reply draft");
         }
       });
     },
