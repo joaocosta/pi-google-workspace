@@ -9,6 +9,8 @@ import {
   type WorkspaceAuthService,
 } from "./auth/oauth.js";
 import { createTokenStore, type TokenStore } from "./auth/token-store.js";
+import type { CalendarClientFactory, CalendarClientProvider } from "./calendar/client.js";
+import { registerCalendar } from "./calendar/index.js";
 import { registerAuthCommands } from "./extension/commands.js";
 import type { GmailClientFactory, GmailClientProvider } from "./gmail/client.js";
 import { registerGmail } from "./gmail/index.js";
@@ -18,6 +20,8 @@ export interface GoogleWorkspaceDependencies {
   readonly oauthClientFactory?: OAuthClientFactory;
   readonly loopbackServerFactory?: LoopbackServerFactory;
   readonly authService?: WorkspaceAuthService;
+  readonly calendarClientFactory?: CalendarClientFactory;
+  readonly calendarClientProvider?: CalendarClientProvider;
   readonly gmailClientFactory?: GmailClientFactory;
   readonly gmailClientProvider?: GmailClientProvider;
 }
@@ -43,6 +47,11 @@ export function createGoogleWorkspaceExtension(
       auth,
       clientFactory: dependencies.gmailClientFactory,
       clientProvider: dependencies.gmailClientProvider,
+    });
+    registerCalendar(pi, {
+      auth,
+      clientFactory: dependencies.calendarClientFactory,
+      clientProvider: dependencies.calendarClientProvider,
     });
   };
 }

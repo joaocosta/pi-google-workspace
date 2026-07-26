@@ -13,7 +13,7 @@ describe("extension composition root", () => {
     });
   });
 
-  it("imports without I/O and registers shared commands plus Gmail tools", () => {
+  it("imports without I/O and registers shared commands plus app tools", () => {
     const pi = { registerCommand: vi.fn(), registerTool: vi.fn() };
 
     expect(() => googleWorkspace(pi as never)).not.toThrow();
@@ -28,6 +28,7 @@ describe("extension composition root", () => {
       "gws_gmail_create_draft",
       "gws_gmail_create_reply_draft",
       "gws_gmail_move_message",
+      "gws_calendar_list",
     ]);
   });
 });
