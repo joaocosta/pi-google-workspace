@@ -10,12 +10,16 @@ import {
 } from "./auth/oauth.js";
 import { createTokenStore, type TokenStore } from "./auth/token-store.js";
 import { registerAuthCommands } from "./extension/commands.js";
+import type { GmailClientFactory, GmailClientProvider } from "./gmail/client.js";
+import { registerGmail } from "./gmail/index.js";
 
 export interface GoogleWorkspaceDependencies {
   readonly tokenStore?: TokenStore;
   readonly oauthClientFactory?: OAuthClientFactory;
   readonly loopbackServerFactory?: LoopbackServerFactory;
   readonly authService?: WorkspaceAuthService;
+  readonly gmailClientFactory?: GmailClientFactory;
+  readonly gmailClientProvider?: GmailClientProvider;
 }
 
 /** Create an injectable extension factory while keeping this module a composition root. */
@@ -35,6 +39,11 @@ export function createGoogleWorkspaceExtension(
       });
 
     registerAuthCommands(pi, auth);
+    registerGmail(pi, {
+      auth,
+      clientFactory: dependencies.gmailClientFactory,
+      clientProvider: dependencies.gmailClientProvider,
+    });
   };
 }
 

@@ -13,7 +13,7 @@ describe("extension composition root", () => {
     });
   });
 
-  it("imports without I/O and registers only shared auth commands", () => {
+  it("imports without I/O and registers shared commands plus Gmail read tools", () => {
     const pi = { registerCommand: vi.fn(), registerTool: vi.fn() };
 
     expect(() => googleWorkspace(pi as never)).not.toThrow();
@@ -22,6 +22,9 @@ describe("extension composition root", () => {
       "gws-status",
       "gws-logout",
     ]);
-    expect(pi.registerTool).not.toHaveBeenCalled();
+    expect(pi.registerTool.mock.calls.map(([tool]) => tool.name)).toEqual([
+      "gws_gmail_search",
+      "gws_gmail_read_message",
+    ]);
   });
 });

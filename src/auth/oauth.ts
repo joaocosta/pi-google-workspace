@@ -5,6 +5,8 @@ import type { WorkspaceAppKey } from "./paths.js";
 import type { JsonObject, OAuthCredentials, TokenStore } from "./token-store.js";
 
 export interface OAuthClient {
+  /** Native transport used by Google service constructors; test clients may omit it. */
+  readonly googleAuthClient?: InstanceType<typeof google.auth.OAuth2>;
   generateAuthUrl(options: {
     access_type: "offline";
     prompt: "consent";
@@ -137,6 +139,7 @@ export const createNodeLoopbackServer: LoopbackServerFactory = async (displayNam
 export const createGoogleOAuthClient: OAuthClientFactory = (clientId, clientSecret, redirectUri) => {
   const client = new google.auth.OAuth2(clientId, clientSecret, redirectUri);
   return {
+    googleAuthClient: client,
     generateAuthUrl: (options) => client.generateAuthUrl({ ...options, scope: [...options.scope] }),
     async getToken(code) {
       const result = await client.getToken(code);
