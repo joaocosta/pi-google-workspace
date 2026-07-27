@@ -24,15 +24,16 @@ describe("package presentation", () => {
   it("documents exact OAuth paths and minimum scopes without legacy public commands", async () => {
     const readme = await readFile(new URL("README.md", root), "utf8");
 
-    expect(readme).toContain("~/.pi/agent/google-oauth/client_secret.json");
-    expect(readme).toContain("~/.pi/agent/google-oauth/gmail-token.json");
-    expect(readme).toContain("~/.pi/agent/google-oauth/calendar-token.json");
+    expect(readme).toContain("~/.pi/agent/gws-oauth/client_secret.json");
+    expect(readme).toContain("~/.pi/agent/gws-oauth/gmail-token.json");
+    expect(readme).toContain("~/.pi/agent/gws-oauth/calendar-token.json");
     expect(readme).toContain("https://www.googleapis.com/auth/gmail.modify");
     expect(readme).toContain(
       "https://www.googleapis.com/auth/calendar.calendarlist.readonly",
     );
     expect(readme).toContain("https://www.googleapis.com/auth/calendar.events");
     expect(readme).not.toMatch(/\/(?:gmail|google)-(?:login|status|logout)\b/);
+    expect(readme).not.toContain("~/.pi/agent/google-oauth");
     expect(readme).not.toContain("~/.pi/agent/gmail-oauth");
     expect(readme).not.toContain("https://www.googleapis.com/auth/calendar\n");
   });

@@ -22,7 +22,7 @@ export interface OAuthPaths {
 
 /** Resolve OAuth paths beneath a supplied home root without touching the filesystem. */
 export function resolveOAuthPaths(homeRoot: string = homedir()): OAuthPaths {
-  const configDirectory = join(homeRoot, ".pi", "agent", "google-oauth");
+  const configDirectory = join(homeRoot, ".pi", "agent", "gws-oauth");
   const tokens = Object.fromEntries(
     WORKSPACE_APP_KEYS.map((key) => [key, join(configDirectory, APP_STORAGE_DEFINITIONS[key].tokenFileName)]),
   ) as Record<WorkspaceAppKey, string>;

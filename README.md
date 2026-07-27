@@ -57,17 +57,17 @@ Pi installs runtime dependencies for Git packages. A local path points directly 
 5. Download its JSON and install it at the shared path:
 
 ```bash
-install -d -m 700 ~/.pi/agent/google-oauth
+install -d -m 700 ~/.pi/agent/gws-oauth
 install -m 600 ~/Downloads/client_secret_*.json \
-  ~/.pi/agent/google-oauth/client_secret.json
+  ~/.pi/agent/gws-oauth/client_secret.json
 ```
 
 Keep that file out of Git, CI, issue reports, and logs. The package uses exactly these paths:
 
 ```text
-~/.pi/agent/google-oauth/client_secret.json
-~/.pi/agent/google-oauth/gmail-token.json
-~/.pi/agent/google-oauth/calendar-token.json
+~/.pi/agent/gws-oauth/client_secret.json
+~/.pi/agent/gws-oauth/gmail-token.json
+~/.pi/agent/gws-oauth/calendar-token.json
 ```
 
 The directory is maintained with mode `0700` and credential/token files with mode `0600` where the platform supports POSIX permissions. Token writes are atomic and preserve an existing refresh token when Google returns only a new access token.

@@ -22,11 +22,11 @@ describe("OAuth paths", () => {
     const paths = resolveOAuthPaths("/home/example");
 
     expect(paths).toEqual({
-      configDirectory: "/home/example/.pi/agent/google-oauth",
-      clientSecret: "/home/example/.pi/agent/google-oauth/client_secret.json",
+      configDirectory: "/home/example/.pi/agent/gws-oauth",
+      clientSecret: "/home/example/.pi/agent/gws-oauth/client_secret.json",
       tokens: {
-        gmail: "/home/example/.pi/agent/google-oauth/gmail-token.json",
-        calendar: "/home/example/.pi/agent/google-oauth/calendar-token.json",
+        gmail: "/home/example/.pi/agent/gws-oauth/gmail-token.json",
+        calendar: "/home/example/.pi/agent/gws-oauth/calendar-token.json",
       },
     });
   });
