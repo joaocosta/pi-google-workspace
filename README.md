@@ -2,8 +2,6 @@
 
 A Pi package for bounded Gmail and Google Calendar access with shared OAuth infrastructure and independent authorization per app.
 
-Version 1 is a breaking successor to `pi-gmail-extension`. It does not provide compatibility aliases or migrate credentials or tokens.
-
 ## Public surface
 
 Commands:
