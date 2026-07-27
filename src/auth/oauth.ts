@@ -72,6 +72,18 @@ function missingFile(error: unknown): boolean {
   return (error as NodeJS.ErrnoException)?.code === "ENOENT";
 }
 
+function missingClientSecretMessage(path: string): string {
+  return [
+    `Missing OAuth client credentials at ${path}.`,
+    "",
+    "Create an OAuth client in Google Cloud Console:",
+    "https://console.cloud.google.com/apis/credentials",
+    "",
+    "Choose Create Credentials → OAuth client ID → Desktop app, download the JSON, and save it at that path.",
+    "You may need to enable the Gmail API and Google Calendar API and configure the OAuth consent screen first.",
+  ].join("\n");
+}
+
 async function closeServer(server: ReturnType<typeof createServer>): Promise<void> {
   if (!server.listening) return;
   await new Promise<void>((resolve, reject) => {
@@ -173,7 +185,7 @@ export function createWorkspaceAuth(options: WorkspaceAuthOptions): WorkspaceAut
       secret = await store.readClientSecret();
     } catch (error) {
       if (missingFile(error)) {
-        throw new SafeAuthError(`Missing OAuth client credentials at ${store.paths.clientSecret}.`);
+        throw new SafeAuthError(missingClientSecretMessage(store.paths.clientSecret));
       }
       throw new SafeAuthError(`OAuth client credentials at ${store.paths.clientSecret} are invalid or unreadable.`);
     }

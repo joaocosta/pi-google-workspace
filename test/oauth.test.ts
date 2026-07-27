@@ -132,6 +132,9 @@ describe("workspace OAuth service", () => {
     await expect(createWorkspaceAuth({ store, apps }).getAuthenticatedClient("gmail")).rejects.toThrow(
       `Missing OAuth client credentials at ${store.paths.clientSecret}.`,
     );
+    await expect(createWorkspaceAuth({ store, apps }).getAuthenticatedClient("gmail")).rejects.toThrow(
+      "Create Credentials → OAuth client ID → Desktop app",
+    );
 
     await store.writeClientSecret({ web: { client_id: "web-client", client_secret: "web-secret" } });
     const { client } = fakeClient();
