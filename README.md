@@ -10,8 +10,9 @@ Commands:
 - `/gws-login gmail|calendar` — authorize one app; with a UI, omitting the app opens a selector.
 - `/gws-status [gmail|calendar]` — inspect the current tool switch plus local client and token state without exposing credentials.
 - `/gws-logout gmail|calendar` — remove only that app's local token. This does not revoke Google's server-side grant.
+- `--gws-enabled` — start a session with all Google Workspace tools enabled; useful with non-interactive `pi -p` runs.
 
-Tools are registered but disabled by default, so their definitions do not consume model context. Run `/gws on` in each session where they are needed. This in-memory switch never persists; new, resumed, forked, and reloaded sessions start disabled.
+Tools are registered but disabled by default, so their definitions do not consume model context. Run `/gws on` in each session where they are needed. This in-memory switch never persists; new, resumed, forked, and reloaded sessions start disabled unless the `--gws-enabled` flag is supplied for that invocation.
 
 | Tool | Behavior |
 | --- | --- |
@@ -85,6 +86,14 @@ After installation and `/reload`, authorize only the apps you need, then explici
 ```
 
 Each login prints an authorization URL for you to open manually. The package does not launch a browser. It listens on a localhost callback using a transient port and intentionally has no login timeout; cancel an abandoned operation externally and retry. Gmail and Calendar may be authorized to different Google accounts because identity scopes and account matching are intentionally absent.
+
+For a one-shot non-interactive run, supply `--gws-enabled` after authorizing the needed app:
+
+```bash
+pi --gws-enabled -p "Search my Gmail for the latest email from Alice and summarize it."
+```
+
+Headless mutation requests have no confirmation dialog, so prompts that create drafts or events, or move messages, must express explicit user intent.
 
 One shared Desktop client configuration is used, but tokens and grants remain independent:
 

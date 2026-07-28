@@ -50,6 +50,12 @@ export function createGoogleWorkspaceExtension(
         loopbackServerFactory: dependencies.loopbackServerFactory ?? createNodeLoopbackServer,
       });
 
+    pi.registerFlag("gws-enabled", {
+      description: "Start with Google Workspace tools enabled",
+      type: "boolean",
+      default: false,
+    });
+
     let toolsEnabled = false;
     const setToolsEnabled = (enabled: boolean) => {
       const otherActiveTools = pi
@@ -80,7 +86,8 @@ export function createGoogleWorkspaceExtension(
     });
 
     // State is deliberately in-memory only and reset for every newly bound session.
-    pi.on("session_start", () => setToolsEnabled(false));
+    // The CLI flag supplies an explicit initial state for one-shot/headless use.
+    pi.on("session_start", () => setToolsEnabled(pi.getFlag("gws-enabled") === true));
   };
 }
 

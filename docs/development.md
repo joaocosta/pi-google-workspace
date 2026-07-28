@@ -21,7 +21,7 @@ Before starting, install/reload the package and ensure the old Gmail extension i
 
 ### 1. Independent authentication and logout isolation
 
-1. Run `/gws-status`; verify tools start disabled, the shared client is configured, and both app states are reported without credential contents.
+1. Run `/gws-status`; verify tools start disabled, the shared client is configured, and both app states are reported without credential contents. Optionally run `pi --gws-enabled -p "List my calendar events for tomorrow"` to verify the flag enables tools for a one-shot session.
 2. Run `/gws-login gmail`, manually open the URL, grant access, and verify only `gmail-token.json` appears.
 3. Run `/gws-login calendar`, grant access separately, and verify `calendar-token.json` appears without changing the Gmail token.
 4. Run `/gws-status gmail` and `/gws-status calendar`.

@@ -15,9 +15,12 @@ describe("extension composition root", () => {
 
   it("imports without I/O, registers commands and tools, and switches only its own tools", async () => {
     let activeTools = ["read"];
+    let gwsEnabled = false;
     const handlers = new Map<string, () => void>();
     const commands = new Map<string, { handler(args: string, ctx: never): Promise<void> }>();
     const pi = {
+      registerFlag: vi.fn(),
+      getFlag: vi.fn((name: string) => (name === "gws-enabled" ? gwsEnabled : undefined)),
       registerCommand: vi.fn((name: string, options: { handler(args: string, ctx: never): Promise<void> }) => {
         commands.set(name, options);
       }),
@@ -30,6 +33,11 @@ describe("extension composition root", () => {
     };
 
     expect(() => googleWorkspace(pi as never)).not.toThrow();
+    expect(pi.registerFlag).toHaveBeenCalledWith("gws-enabled", {
+      description: "Start with Google Workspace tools enabled",
+      type: "boolean",
+      default: false,
+    });
     expect(pi.registerCommand.mock.calls.map(([name]) => name)).toEqual([
       "gws",
       "gws-login",
@@ -56,5 +64,9 @@ describe("extension composition root", () => {
 
     await commands.get("gws")!.handler("off", ctx);
     expect(activeTools).toEqual(["read"]);
+
+    gwsEnabled = true;
+    handlers.get("session_start")!();
+    expect(activeTools).toEqual(["read", ...pi.registerTool.mock.calls.map(([tool]) => tool.name)]);
   });
 });
