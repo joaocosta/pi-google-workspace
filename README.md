@@ -6,11 +6,12 @@ A Pi package for bounded Gmail and Google Calendar access with shared OAuth infr
 
 Commands:
 
+- `/gws [on|off]` — toggle all Google Workspace tools for the current session, or explicitly enable/disable them.
 - `/gws-login gmail|calendar` — authorize one app; with a UI, omitting the app opens a selector.
-- `/gws-status [gmail|calendar]` — inspect local client and token state without exposing credentials.
+- `/gws-status [gmail|calendar]` — inspect the current tool switch plus local client and token state without exposing credentials.
 - `/gws-logout gmail|calendar` — remove only that app's local token. This does not revoke Google's server-side grant.
 
-Tools:
+Tools are registered but disabled by default, so their definitions do not consume model context. Run `/gws on` in each session where they are needed. This in-memory switch never persists; new, resumed, forked, and reloaded sessions start disabled.
 
 | Tool | Behavior |
 | --- | --- |
@@ -74,12 +75,13 @@ The directory is maintained with mode `0700` and credential/token files with mod
 
 ## Authorize each app
 
-After installation and `/reload`, authorize only the apps you need:
+After installation and `/reload`, authorize only the apps you need, then explicitly enable the tools for the current session:
 
 ```text
 /gws-login gmail
 /gws-login calendar
 /gws-status
+/gws on
 ```
 
 Each login prints an authorization URL for you to open manually. The package does not launch a browser. It listens on a localhost callback using a transient port and intentionally has no login timeout; cancel an abandoned operation externally and retry. Gmail and Calendar may be authorized to different Google accounts because identity scopes and account matching are intentionally absent.

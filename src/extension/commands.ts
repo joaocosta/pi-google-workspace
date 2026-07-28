@@ -11,6 +11,11 @@ import {
 
 const APP_ARGUMENTS = WORKSPACE_APP_KEYS.join("|");
 
+export interface WorkspaceToolControl {
+  isEnabled(): boolean;
+  setEnabled(enabled: boolean): void;
+}
+
 function parseApp(argument: string): WorkspaceAppKey | undefined {
   const normalized = argument.trim().toLowerCase();
   return WORKSPACE_APP_KEYS.find((app) => app === normalized);
@@ -59,11 +64,34 @@ function notifySafeError(ctx: ExtensionCommandContext, error: unknown, fallback:
   ctx.ui.notify(sanitizeAuthError(error, fallback).message, "error");
 }
 
-export function registerAuthCommands(pi: ExtensionAPI, auth: WorkspaceAuthService): void {
+export function registerAuthCommands(
+  pi: ExtensionAPI,
+  auth: WorkspaceAuthService,
+  tools: WorkspaceToolControl,
+): void {
   const completions = (prefix: string) => {
     const matches = WORKSPACE_APP_KEYS.filter((app) => app.startsWith(prefix));
     return matches.length ? matches.map((app) => ({ value: app, label: auth.apps[app].displayName })) : null;
   };
+
+  pi.registerCommand("gws", {
+    description: "Toggle Google Workspace tools, or explicitly set them: /gws [on|off]",
+    getArgumentCompletions: (prefix) => {
+      const matches = ["on", "off"].filter((value) => value.startsWith(prefix.trim().toLowerCase()));
+      return matches.length ? matches.map((value) => ({ value, label: value })) : null;
+    },
+    async handler(args, ctx) {
+      const setting = args.trim().toLowerCase();
+      if (setting !== "" && setting !== "on" && setting !== "off") {
+        ctx.ui.notify("Usage: /gws [on|off]", "error");
+        return;
+      }
+
+      const enabled = setting === "" ? !tools.isEnabled() : setting === "on";
+      tools.setEnabled(enabled);
+      ctx.ui.notify(`Google Workspace tools ${enabled ? "enabled" : "disabled"}.`, "info");
+    },
+  });
 
   pi.registerCommand("gws-login", {
     description: "Authorize Gmail or Calendar for Google Workspace tools",
@@ -83,7 +111,7 @@ export function registerAuthCommands(pi: ExtensionAPI, auth: WorkspaceAuthServic
   });
 
   pi.registerCommand("gws-status", {
-    description: "Show local Google Workspace authentication status",
+    description: "Show Google Workspace tool and authentication status",
     getArgumentCompletions: completions,
     async handler(args, ctx) {
       const trimmed = args.trim();
@@ -93,16 +121,21 @@ export function registerAuthCommands(pi: ExtensionAPI, auth: WorkspaceAuthServic
         return;
       }
 
+      const toolStatus = `Google Workspace tools: ${tools.isEnabled() ? "enabled" : "disabled"}`;
       try {
         const status = await auth.getStatus();
-        const lines = [clientStatus(status.client)];
+        const lines = [toolStatus, clientStatus(status.client)];
         const apps = selected ? [selected] : WORKSPACE_APP_KEYS;
         for (const app of apps) {
           lines.push(appStatus(auth.apps[app].displayName, app, status.apps[app]));
         }
         ctx.ui.notify(lines.join("\n"), status.client === "present" ? "info" : "warning");
       } catch (error) {
-        notifySafeError(ctx, error, "Could not inspect local Google Workspace authentication status.");
+        const safe = sanitizeAuthError(
+          error,
+          "Could not inspect local Google Workspace authentication status.",
+        );
+        ctx.ui.notify(`${toolStatus}\n${safe.message}`, "error");
       }
     },
   });

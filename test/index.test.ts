@@ -13,11 +13,25 @@ describe("extension composition root", () => {
     });
   });
 
-  it("imports without I/O and registers shared commands plus app tools", () => {
-    const pi = { registerCommand: vi.fn(), registerTool: vi.fn() };
+  it("imports without I/O, registers commands and tools, and switches only its own tools", async () => {
+    let activeTools = ["read"];
+    const handlers = new Map<string, () => void>();
+    const commands = new Map<string, { handler(args: string, ctx: never): Promise<void> }>();
+    const pi = {
+      registerCommand: vi.fn((name: string, options: { handler(args: string, ctx: never): Promise<void> }) => {
+        commands.set(name, options);
+      }),
+      registerTool: vi.fn((tool: { name: string }) => activeTools.push(tool.name)),
+      getActiveTools: vi.fn(() => [...activeTools]),
+      setActiveTools: vi.fn((names: string[]) => {
+        activeTools = [...names];
+      }),
+      on: vi.fn((event: string, handler: () => void) => handlers.set(event, handler)),
+    };
 
     expect(() => googleWorkspace(pi as never)).not.toThrow();
     expect(pi.registerCommand.mock.calls.map(([name]) => name)).toEqual([
+      "gws",
       "gws-login",
       "gws-status",
       "gws-logout",
@@ -32,5 +46,15 @@ describe("extension composition root", () => {
       "gws_calendar_list_events",
       "gws_calendar_create_event",
     ]);
+
+    handlers.get("session_start")!();
+    expect(activeTools).toEqual(["read"]);
+
+    const ctx = { ui: { notify: vi.fn() } } as never;
+    await commands.get("gws")!.handler("on", ctx);
+    expect(activeTools).toEqual(["read", ...pi.registerTool.mock.calls.map(([tool]) => tool.name)]);
+
+    await commands.get("gws")!.handler("off", ctx);
+    expect(activeTools).toEqual(["read"]);
   });
 });

@@ -11,6 +11,14 @@ import { buildPlainTextMessage, encodeBase64Url, sanitizeHeader } from "./mail.j
 import { parseMessage, summarizeMessage } from "./messages.js";
 import { deriveReplyDraft, GmailReplyDerivationError } from "./reply.js";
 
+export const GMAIL_TOOL_NAMES = {
+  search: "gws_gmail_search",
+  readMessage: "gws_gmail_read_message",
+  createDraft: "gws_gmail_create_draft",
+  createReplyDraft: "gws_gmail_create_reply_draft",
+  moveMessage: "gws_gmail_move_message",
+} as const;
+
 export interface GmailDependencies {
   readonly auth: WorkspaceAuthService;
   readonly clientFactory?: GmailClientFactory;
@@ -58,7 +66,7 @@ export function registerGmail(pi: ExtensionAPI, dependencies: GmailDependencies)
     createGmailClientProvider(dependencies.auth, dependencies.clientFactory);
 
   pi.registerTool({
-    name: "gws_gmail_search",
+    name: GMAIL_TOOL_NAMES.search,
     label: "Google Workspace Gmail Search",
     description:
       "Search Gmail with Gmail search syntax. Inbox scope excludes spam, trash, and snoozed messages. Read-only.",
@@ -133,7 +141,7 @@ export function registerGmail(pi: ExtensionAPI, dependencies: GmailDependencies)
   });
 
   pi.registerTool({
-    name: "gws_gmail_read_message",
+    name: GMAIL_TOOL_NAMES.readMessage,
     label: "Google Workspace Gmail Read Message",
     description: "Read one Gmail message by its Gmail message ID. Read-only.",
     promptSnippet: "gws_gmail_read_message: read a Gmail message by ID",
@@ -171,7 +179,7 @@ export function registerGmail(pi: ExtensionAPI, dependencies: GmailDependencies)
   });
 
   pi.registerTool({
-    name: "gws_gmail_create_draft",
+    name: GMAIL_TOOL_NAMES.createDraft,
     label: "Google Workspace Gmail Create Draft",
     description:
       "Create a plain-text Gmail draft after explicit caller intent and interactive confirmation. The message remains a draft and is not sent.",
@@ -245,7 +253,7 @@ export function registerGmail(pi: ExtensionAPI, dependencies: GmailDependencies)
   });
 
   pi.registerTool({
-    name: "gws_gmail_create_reply_draft",
+    name: GMAIL_TOOL_NAMES.createReplyDraft,
     label: "Google Workspace Gmail Create Reply Draft",
     description:
       "Create a one-recipient plain-text draft reply in an existing Gmail conversation after explicit caller intent and interactive confirmation. This never sends email.",
@@ -356,7 +364,7 @@ export function registerGmail(pi: ExtensionAPI, dependencies: GmailDependencies)
   });
 
   pi.registerTool({
-    name: "gws_gmail_move_message",
+    name: GMAIL_TOOL_NAMES.moveMessage,
     label: "Google Workspace Gmail Move Message",
     description:
       "Move one Gmail message to Inbox, Trash, Archive, or Spam. Moving out of Trash restores it first and unrelated labels are preserved. Execute only after an explicit user request; interactive mode requires confirmation.",

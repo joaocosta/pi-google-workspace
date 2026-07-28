@@ -11,10 +11,16 @@ import {
 import { createTokenStore, type TokenStore } from "./auth/token-store.js";
 import type { CalendarClientFactory, CalendarClientProvider } from "./calendar/client.js";
 import type { CalendarTimeDependencies } from "./calendar/events.js";
-import { registerCalendar } from "./calendar/index.js";
+import { CALENDAR_TOOL_NAMES, registerCalendar } from "./calendar/index.js";
 import { registerAuthCommands } from "./extension/commands.js";
 import type { GmailClientFactory, GmailClientProvider } from "./gmail/client.js";
-import { registerGmail } from "./gmail/index.js";
+import { GMAIL_TOOL_NAMES, registerGmail } from "./gmail/index.js";
+
+const GOOGLE_WORKSPACE_TOOL_NAMES = [
+  ...Object.values(GMAIL_TOOL_NAMES),
+  ...Object.values(CALENDAR_TOOL_NAMES),
+];
+const GOOGLE_WORKSPACE_TOOL_NAME_SET = new Set<string>(GOOGLE_WORKSPACE_TOOL_NAMES);
 
 export interface GoogleWorkspaceDependencies {
   readonly tokenStore?: TokenStore;
@@ -44,7 +50,23 @@ export function createGoogleWorkspaceExtension(
         loopbackServerFactory: dependencies.loopbackServerFactory ?? createNodeLoopbackServer,
       });
 
-    registerAuthCommands(pi, auth);
+    let toolsEnabled = false;
+    const setToolsEnabled = (enabled: boolean) => {
+      const otherActiveTools = pi
+        .getActiveTools()
+        .filter((name) => !GOOGLE_WORKSPACE_TOOL_NAME_SET.has(name));
+      pi.setActiveTools(
+        enabled
+          ? [...new Set([...otherActiveTools, ...GOOGLE_WORKSPACE_TOOL_NAMES])]
+          : otherActiveTools,
+      );
+      toolsEnabled = enabled;
+    };
+
+    registerAuthCommands(pi, auth, {
+      isEnabled: () => toolsEnabled,
+      setEnabled: setToolsEnabled,
+    });
     registerGmail(pi, {
       auth,
       clientFactory: dependencies.gmailClientFactory,
@@ -56,6 +78,9 @@ export function createGoogleWorkspaceExtension(
       clientProvider: dependencies.calendarClientProvider,
       time: dependencies.calendarTime,
     });
+
+    // State is deliberately in-memory only and reset for every newly bound session.
+    pi.on("session_start", () => setToolsEnabled(false));
   };
 }
 

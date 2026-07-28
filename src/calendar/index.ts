@@ -16,6 +16,12 @@ import {
   type CalendarTimeDependencies,
 } from "./events.js";
 
+export const CALENDAR_TOOL_NAMES = {
+  list: "gws_calendar_list",
+  listEvents: "gws_calendar_list_events",
+  createEvent: "gws_calendar_create_event",
+} as const;
+
 export interface CalendarDependencies {
   readonly auth: WorkspaceAuthService;
   readonly clientFactory?: CalendarClientFactory;
@@ -41,7 +47,7 @@ export function registerCalendar(pi: ExtensionAPI, dependencies: CalendarDepende
     createCalendarClientProvider(dependencies.auth, dependencies.clientFactory);
 
   pi.registerTool({
-    name: "gws_calendar_list",
+    name: CALENDAR_TOOL_NAMES.list,
     label: "Google Workspace Calendar List",
     description:
       "List one bounded page of calendars available to the authenticated Calendar account. Read-only.",
@@ -103,7 +109,7 @@ export function registerCalendar(pi: ExtensionAPI, dependencies: CalendarDepende
   });
 
   pi.registerTool({
-    name: "gws_calendar_list_events",
+    name: CALENDAR_TOOL_NAMES.listEvents,
     label: "Google Workspace Calendar Event List",
     description:
       "List one bounded page of expanded, non-cancelled Calendar events in ascending start order. Read-only.",
@@ -195,7 +201,7 @@ export function registerCalendar(pi: ExtensionAPI, dependencies: CalendarDepende
   });
 
   pi.registerTool({
-    name: "gws_calendar_create_event",
+    name: CALENDAR_TOOL_NAMES.createEvent,
     label: "Google Workspace Calendar Create Event",
     description:
       "Create one core-field timed or all-day Calendar event after explicit caller intent and interactive confirmation.",

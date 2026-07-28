@@ -26,8 +26,15 @@ function harness(overrides: Partial<WorkspaceAuthService> = {}) {
   const pi = {
     registerCommand: vi.fn((name: string, options: CommandOptions) => commands.set(name, options)),
   };
-  registerAuthCommands(pi as never, auth);
-  return { auth, commands, pi };
+  let toolsEnabled = false;
+  const toolControl = {
+    isEnabled: vi.fn(() => toolsEnabled),
+    setEnabled: vi.fn((enabled: boolean) => {
+      toolsEnabled = enabled;
+    }),
+  };
+  registerAuthCommands(pi as never, auth, toolControl);
+  return { auth, commands, pi, toolControl };
 }
 
 function context(options: { hasUI?: boolean; selected?: string; confirmed?: boolean } = {}) {
@@ -40,9 +47,34 @@ function context(options: { hasUI?: boolean; selected?: string; confirmed?: bool
 }
 
 describe("shared authentication commands", () => {
-  it("registers exactly the three prefixed commands", () => {
+  it("registers the tool switch and three authentication commands", () => {
     const { commands } = harness();
-    expect([...commands.keys()]).toEqual(["gws-login", "gws-status", "gws-logout"]);
+    expect([...commands.keys()]).toEqual(["gws", "gws-login", "gws-status", "gws-logout"]);
+  });
+
+  it("toggles without an argument and accepts explicit switch arguments", async () => {
+    const { commands, toolControl } = harness();
+    const toggledOn = context();
+    await commands.get("gws")!.handler("", toggledOn.ctx);
+    expect(toolControl.setEnabled).toHaveBeenCalledWith(true);
+    expect(toggledOn.ui.notify).toHaveBeenCalledWith("Google Workspace tools enabled.", "info");
+
+    const toggledOff = context();
+    await commands.get("gws")!.handler("", toggledOff.ctx);
+    expect(toolControl.setEnabled).toHaveBeenLastCalledWith(false);
+
+    const enabled = context();
+    await commands.get("gws")!.handler("on", enabled.ctx);
+    expect(toolControl.setEnabled).toHaveBeenLastCalledWith(true);
+
+    const disabled = context();
+    await commands.get("gws")!.handler("OFF", disabled.ctx);
+    expect(toolControl.setEnabled).toHaveBeenLastCalledWith(false);
+
+    const invalid = context();
+    await commands.get("gws")!.handler("maybe", invalid.ctx);
+    expect(toolControl.setEnabled).toHaveBeenCalledTimes(4);
+    expect(invalid.ui.notify).toHaveBeenCalledWith("Usage: /gws [on|off]", "error");
   });
 
   it("uses a selector for omitted interactive login and displays the manual URL", async () => {
@@ -71,6 +103,7 @@ describe("shared authentication commands", () => {
     const all = context();
     await commands.get("gws-status")!.handler("", all.ctx);
     const allMessage = all.ui.notify.mock.calls[0]?.[0] as string;
+    expect(allMessage).toContain("Google Workspace tools: disabled");
     expect(allMessage).toContain("Shared OAuth client: configured");
     expect(allMessage).toContain("Gmail: authenticated");
     expect(allMessage).toContain("Calendar: not authenticated (run /gws-login calendar)");
