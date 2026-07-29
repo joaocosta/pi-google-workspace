@@ -42,6 +42,7 @@ function mockClient(): GmailClient {
     users: {
       drafts: { create: vi.fn(async () => ({ data: {} })) },
       messages: {
+        attachments: { get: vi.fn(async () => ({ data: {} })) },
         list: vi.fn(async () => ({
           data: {
             messages: [

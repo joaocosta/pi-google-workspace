@@ -1,5 +1,7 @@
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
+import * as nodeFs from "node:fs/promises";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
+import type { GmailClientProvider } from "./client.js";
 
 export const MAX_GMAIL_ATTACHMENT_BYTES = 26_214_400;
 export const MAX_ATTACHMENT_FILENAME_BYTES = 240;
@@ -43,6 +45,40 @@ export class GmailAttachmentSafetyError extends Error {
     this.name = "GmailAttachmentSafetyError";
   }
 }
+
+export class GmailAttachmentDownloadError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "GmailAttachmentDownloadError";
+  }
+}
+
+export interface GmailAttachmentFileHandle {
+  writeFile(data: Uint8Array): Promise<void>;
+  sync(): Promise<void>;
+  close(): Promise<void>;
+}
+
+export interface GmailAttachmentFileSystem {
+  lstat(path: string): Promise<unknown>;
+  open(path: string, flags: "wx", mode: number): Promise<GmailAttachmentFileHandle>;
+  link(existingPath: string, newPath: string): Promise<void>;
+  unlink(path: string): Promise<void>;
+}
+
+export interface GmailAttachmentDownloadDependencies {
+  readonly clientProvider: GmailClientProvider;
+  readonly fs?: GmailAttachmentFileSystem;
+  readonly cwd?: () => string;
+  readonly temporaryToken?: () => string;
+}
+
+const defaultAttachmentFileSystem: GmailAttachmentFileSystem = {
+  lstat: (path) => nodeFs.lstat(path),
+  open: (path, flags, mode) => nodeFs.open(path, flags, mode),
+  link: (existingPath, newPath) => nodeFs.link(existingPath, newPath),
+  unlink: (path) => nodeFs.unlink(path),
+};
 
 function fail(message: string): never {
   throw new GmailAttachmentSafetyError(message);
@@ -254,6 +290,130 @@ export function formatIecBytes(sizeBytes: number): string {
   }
   const rounded = value >= 10 ? Math.round(value) : Math.round(value * 10) / 10;
   return `${rounded} ${unit}`;
+}
+
+function errorCode(error: unknown): string | undefined {
+  return (error as NodeJS.ErrnoException)?.code;
+}
+
+function throwIfCancelled(signal: AbortSignal | undefined): void {
+  if (signal?.aborted) throw new GmailAttachmentDownloadError("Attachment download was cancelled.");
+}
+
+async function destinationMustNotExist(
+  fs: GmailAttachmentFileSystem,
+  destinationPath: string,
+): Promise<void> {
+  try {
+    await fs.lstat(destinationPath);
+  } catch (error) {
+    if (errorCode(error) === "ENOENT") return;
+    throw new GmailAttachmentDownloadError("Could not safely inspect the attachment destination.");
+  }
+  throw new GmailAttachmentDownloadError("Attachment destination already exists.");
+}
+
+function createTemporaryFilename(tokenFactory: () => string): string {
+  const token = tokenFactory();
+  if (!/^[a-f0-9]{16,64}$/i.test(token)) {
+    throw new GmailAttachmentDownloadError("Could not create a safe temporary attachment file.");
+  }
+  return `.gws-gmail-attachment-${token}.tmp`;
+}
+
+/** Retrieve exactly one explicit attachment and publish it through an exclusive hard link. */
+export async function downloadGmailAttachment(
+  input: GmailAttachmentDownloadInput,
+  dependencies: GmailAttachmentDownloadDependencies,
+  signal?: AbortSignal,
+): Promise<GmailAttachmentDownloadResult> {
+  const invocationRoot = resolve((dependencies.cwd ?? process.cwd)());
+  const prepared = prepareGmailAttachmentDownload(input, invocationRoot);
+  const fs = dependencies.fs ?? defaultAttachmentFileSystem;
+
+  throwIfCancelled(signal);
+  await destinationMustNotExist(fs, prepared.destinationPath);
+  throwIfCancelled(signal);
+
+  let response: { data: { data?: string | null; size?: number | null } };
+  try {
+    const client = await dependencies.clientProvider.getClient();
+    throwIfCancelled(signal);
+    response = await client.users.messages.attachments.get(
+      {
+        userId: "me",
+        messageId: prepared.messageId,
+        id: prepared.attachmentId,
+      },
+      { signal },
+    );
+  } catch (error) {
+    if (error instanceof GmailAttachmentDownloadError) throw error;
+    throwIfCancelled(signal);
+    throw new GmailAttachmentDownloadError("Could not retrieve the Gmail attachment.");
+  }
+
+  throwIfCancelled(signal);
+  const bytes = decodeGmailAttachmentData(response.data.data, response.data.size);
+  throwIfCancelled(signal);
+
+  const temporaryFilename = createTemporaryFilename(
+    dependencies.temporaryToken ?? (() => randomBytes(16).toString("hex")),
+  );
+  const temporaryPath = join(prepared.root, temporaryFilename);
+  let handle: GmailAttachmentFileHandle | undefined;
+  let temporaryCreated = false;
+  let closed = false;
+  let published = false;
+  let stage: "open" | "write" | "sync" | "close" | "link" = "open";
+
+  try {
+    handle = await fs.open(temporaryPath, "wx", 0o600);
+    temporaryCreated = true;
+    stage = "write";
+    await handle.writeFile(bytes);
+    throwIfCancelled(signal);
+    stage = "sync";
+    await handle.sync();
+    throwIfCancelled(signal);
+    stage = "close";
+    await handle.close();
+    closed = true;
+    throwIfCancelled(signal);
+    stage = "link";
+    await fs.link(temporaryPath, prepared.destinationPath);
+    published = true;
+
+    try {
+      await fs.unlink(temporaryPath);
+      temporaryCreated = false;
+      return buildGmailAttachmentResult(prepared, bytes.length);
+    } catch {
+      return buildGmailAttachmentResult(prepared, bytes.length, temporaryFilename);
+    }
+  } catch (error) {
+    if (handle && !closed) {
+      try {
+        await handle.close();
+      } catch {
+        // Best effort only; the temporary name is still removed below.
+      }
+    }
+    if (temporaryCreated && !published) {
+      try {
+        await fs.unlink(temporaryPath);
+      } catch {
+        // Best-effort pre-publication cleanup must not expose internal paths.
+      }
+    }
+
+    if (error instanceof GmailAttachmentDownloadError) throw error;
+    throwIfCancelled(signal);
+    if (stage === "link" && errorCode(error) === "EEXIST") {
+      throw new GmailAttachmentDownloadError("Attachment destination already exists.");
+    }
+    throw new GmailAttachmentDownloadError("Could not publish the Gmail attachment safely.");
+  }
 }
 
 export function buildGmailAttachmentResult(

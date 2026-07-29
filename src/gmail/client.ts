@@ -14,6 +14,12 @@ export interface GmailClient {
       ): Promise<{ data: gmail_v1.Schema$Draft }>;
     };
     readonly messages: {
+      readonly attachments: {
+        get(
+          request: gmail_v1.Params$Resource$Users$Messages$Attachments$Get,
+          options?: GmailRequestOptions,
+        ): Promise<{ data: gmail_v1.Schema$MessagePartBody }>;
+      };
       list(
         request: gmail_v1.Params$Resource$Users$Messages$List,
         options?: GmailRequestOptions,
