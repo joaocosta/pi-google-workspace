@@ -32,6 +32,37 @@ export const nestedMultipartMessage: gmail_v1.Schema$Message = {
         ],
       },
       { mimeType: "text/plain", body: { data: encodeFixture("Second plain section") } },
+      {
+        filename: "report.pdf",
+        mimeType: "application/pdf",
+        headers: [{ name: "Content-Disposition", value: "attachment; filename=report.pdf" }],
+        body: { attachmentId: "attachment-report", size: 12 },
+      },
+      {
+        mimeType: "multipart/related",
+        parts: [
+          {
+            filename: "inline-image.png",
+            mimeType: "image/png",
+            headers: [{ name: "cOnTeNt-DiSpOsItIoN", value: "Inline; filename=inline-image.png" }],
+            body: { attachmentId: "attachment-inline", size: 34 },
+          },
+          {
+            mimeType: "multipart/mixed",
+            parts: [
+              {
+                filename: "   ",
+                body: { attachmentId: "attachment-unnamed" },
+              },
+              {
+                filename: "not-external.txt",
+                mimeType: "text/plain",
+                body: { attachmentId: "   ", size: 5 },
+              },
+            ],
+          },
+        ],
+      },
     ],
   },
 };

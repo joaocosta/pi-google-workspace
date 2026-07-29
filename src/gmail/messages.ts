@@ -10,11 +10,20 @@ export interface GmailMessageSummary {
   readonly snippet?: string | null;
 }
 
+export interface GmailAttachmentMetadata {
+  readonly attachmentId: string;
+  readonly filename: string;
+  readonly mediaType: string;
+  readonly size: number;
+  readonly contentDisposition?: string;
+}
+
 export interface ParsedGmailMessage extends GmailMessageSummary {
   readonly cc: string;
   readonly messageId: string;
   readonly references: string;
   readonly body: string;
+  readonly attachments: readonly GmailAttachmentMetadata[];
 }
 
 export function decodeBase64Url(data?: string | null): string {
@@ -43,6 +52,43 @@ export function collectMimeParts(
   return output;
 }
 
+function partHeader(part: gmail_v1.Schema$MessagePart, name: string): string {
+  return part.headers?.find(
+    (candidate) => candidate.name?.toLowerCase() === name.toLowerCase(),
+  )?.value ?? "";
+}
+
+function parseContentDisposition(part: gmail_v1.Schema$MessagePart): string | undefined {
+  const disposition = partHeader(part, "Content-Disposition").split(";", 1)[0]?.trim();
+  return disposition ? disposition.toLowerCase() : undefined;
+}
+
+/** Collect metadata for every externally stored MIME part in encounter order. */
+export function collectAttachmentMetadata(
+  part: gmail_v1.Schema$MessagePart | undefined,
+  output: GmailAttachmentMetadata[] = [],
+): GmailAttachmentMetadata[] {
+  if (!part) return output;
+
+  const attachmentId = part.body?.attachmentId;
+  if (attachmentId?.trim()) {
+    const sourceFilename = part.filename;
+    const contentDisposition = parseContentDisposition(part);
+    output.push({
+      attachmentId,
+      filename: sourceFilename?.trim()
+        ? sourceFilename
+        : `unnamed-attachment-${output.length + 1}`,
+      mediaType: part.mimeType ?? "application/octet-stream",
+      size: part.body?.size ?? 0,
+      ...(contentDisposition ? { contentDisposition } : {}),
+    });
+  }
+
+  for (const child of part.parts ?? []) collectAttachmentMetadata(child, output);
+  return output;
+}
+
 export function summarizeMessage(message: gmail_v1.Schema$Message): GmailMessageSummary {
   return {
     id: message.id,
@@ -67,5 +113,6 @@ export function parseMessage(message: gmail_v1.Schema$Message): ParsedGmailMessa
     messageId: messageHeader(message, "Message-ID"),
     references: messageHeader(message, "References"),
     body: plainText || topLevelBody || html,
+    attachments: collectAttachmentMetadata(message.payload),
   };
 }

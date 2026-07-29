@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  collectAttachmentMetadata,
   collectMimeParts,
   decodeBase64Url,
   messageHeader,
@@ -25,6 +26,37 @@ describe("Gmail message parsing", () => {
     expect(parseMessage(nestedMultipartMessage).body).toBe(
       "First plain section\n\nSecond plain section",
     );
+  });
+
+  it("collects nested, inline, and unnamed external attachment metadata", () => {
+    const expected = [
+      {
+        attachmentId: "attachment-report",
+        filename: "report.pdf",
+        mediaType: "application/pdf",
+        size: 12,
+        contentDisposition: "attachment",
+      },
+      {
+        attachmentId: "attachment-inline",
+        filename: "inline-image.png",
+        mediaType: "image/png",
+        size: 34,
+        contentDisposition: "inline",
+      },
+      {
+        attachmentId: "attachment-unnamed",
+        filename: "unnamed-attachment-3",
+        mediaType: "application/octet-stream",
+        size: 0,
+      },
+    ];
+
+    expect(collectAttachmentMetadata(nestedMultipartMessage.payload)).toEqual(expected);
+    expect(parseMessage(nestedMultipartMessage)).toMatchObject({
+      body: "First plain section\n\nSecond plain section",
+      attachments: expected,
+    });
   });
 
   it("uses the top-level body before falling back to raw HTML", () => {
@@ -53,6 +85,7 @@ describe("Gmail message parsing", () => {
       messageId: "",
       references: "",
       body: "",
+      attachments: [],
     });
   });
 });
