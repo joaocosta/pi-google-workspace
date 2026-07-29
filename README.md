@@ -17,7 +17,8 @@ Tools are registered but disabled by default, so their definitions do not consum
 | Tool | Behavior |
 | --- | --- |
 | `gws_gmail_search` | Searches one bounded page (maximum 20). The default inbox scope excludes spam, trash, and snoozed mail. |
-| `gws_gmail_read_message` | Reads and parses one message by Gmail message ID. |
+| `gws_gmail_read_message` | Reads and parses one message by Gmail message ID, including recursive attachment metadata. |
+| `gws_gmail_download_attachment` | Downloads one explicitly identified attachment into the captured current working directory. |
 | `gws_gmail_create_draft` | Creates a plain-text new-message draft after confirmation. |
 | `gws_gmail_create_reply_draft` | Creates a single-recipient, threaded plain-text reply draft after confirmation. It is not reply-all. |
 | `gws_gmail_move_message` | Moves one message to Inbox, Trash, Archive, or Spam after confirmation; unrelated labels are preserved. |
@@ -28,6 +29,14 @@ Tools are registered but disabled by default, so their definitions do not consum
 Pagination is explicit: list tools return `nextPageToken` when another page exists and never auto-page. Event listing accepts a calendar, query, page token, and offset-free local time range with an IANA time zone. Calendar creation supports only summary, description, location, and timed or all-day timing. For timed events, use offset-free local values and an IANA zone; if omitted, a valid host IANA zone is required. For all-day events, the end date is exclusive.
 
 There is **no Gmail send tool**. Calendar update, delete, attendees, recurrence authoring, and conferencing are outside version 1.
+
+## Gmail attachment workflow
+
+Attachment access requires explicit user intent. Search for a message, read it once with `gws_gmail_read_message`, select exactly one returned `attachmentId`, then call `gws_gmail_download_attachment` with that message ID and attachment ID. Copy the selected metadata values verbatim: `filename` to `sourceFilename`, `mediaType` to `mediaType`, and `size` to `expectedSize`. These values are untrusted hints; the two IDs identify the bytes. The tool never selects by filename, guesses among attachments, bulk-downloads, parses attachment content, or refetches the full message solely for metadata.
+
+A download writes one atomically published file beneath the process current working directory captured for that invocation. An optional `outputFilename` must be a safe filename, not a path; otherwise the untrusted source name is conservatively sanitized. Existing files and symlinks are never overwritten or auto-suffixed. Decoded content is limited to 25 MiB, and filesystems without the required safe hard-link publication support fail cleanly. The response contains only relative path, media type, and actual size metadata—never attachment bytes.
+
+This bounded read materialization does not show a mutation confirmation, so callers must establish explicit attachment-access intent before invoking it. Successfully downloaded files persist and cleanup is caller-owned. A successful response can include a relative temporary filename in `warnings` if post-publication cleanup failed; the complete destination remains valid and the caller should remove the warned temporary entry.
 
 ## Installation
 

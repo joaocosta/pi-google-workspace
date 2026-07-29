@@ -1,4 +1,7 @@
-import { describe, expect, it, vi } from "vitest";
+import * as fs from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createWorkspaceAppRegistry } from "../src/auth/apps.js";
 import type { OAuthClient, WorkspaceAuthService } from "../src/auth/oauth.js";
 import { createTokenStore } from "../src/auth/token-store.js";
@@ -7,6 +10,7 @@ import {
   type GmailClient,
   type GmailClientProvider,
 } from "../src/gmail/client.js";
+import type { GmailAttachmentDownloadDependencies } from "../src/gmail/attachments.js";
 import { buildGmailSearchQuery, registerGmail } from "../src/gmail/index.js";
 import { nestedMultipartMessage } from "./fixtures/gmail-messages.js";
 
@@ -14,8 +18,24 @@ type ToolOptions = {
   description: string;
   promptSnippet?: string;
   promptGuidelines?: string[];
+  parameters: {
+    properties: Record<string, unknown>;
+    required?: string[];
+  };
   execute: Function;
 };
+
+const temporaryRoots: string[] = [];
+
+async function temporaryRoot(): Promise<string> {
+  const root = await fs.mkdtemp(join(tmpdir(), "pi-gmail-tool-test-"));
+  temporaryRoots.push(root);
+  return root;
+}
+
+afterEach(async () => {
+  await Promise.all(temporaryRoots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true })));
+});
 
 function authService(overrides: Partial<WorkspaceAuthService> = {}): WorkspaceAuthService {
   return {
@@ -28,12 +48,15 @@ function authService(overrides: Partial<WorkspaceAuthService> = {}): WorkspaceAu
   };
 }
 
-function register(clientProvider: GmailClientProvider) {
+function register(
+  clientProvider: GmailClientProvider,
+  attachmentDownload?: Omit<GmailAttachmentDownloadDependencies, "clientProvider">,
+) {
   const tools = new Map<string, ToolOptions>();
   const pi = {
     registerTool: vi.fn((tool: ToolOptions & { name: string }) => tools.set(tool.name, tool)),
   };
-  registerGmail(pi as never, { auth: authService(), clientProvider });
+  registerGmail(pi as never, { auth: authService(), clientProvider, attachmentDownload });
   return { tools, pi };
 }
 
@@ -42,7 +65,14 @@ function mockClient(): GmailClient {
     users: {
       drafts: { create: vi.fn(async () => ({ data: {} })) },
       messages: {
-        attachments: { get: vi.fn(async () => ({ data: {} })) },
+        attachments: {
+          get: vi.fn(async () => ({
+            data: {
+              data: Buffer.from([0, 255, 128, 65]).toString("base64url"),
+              size: 4,
+            },
+          })),
+        },
         list: vi.fn(async () => ({
           data: {
             messages: [
@@ -87,6 +117,7 @@ describe("Gmail read tool registration", () => {
     expect([...tools.keys()]).toEqual([
       "gws_gmail_search",
       "gws_gmail_read_message",
+      "gws_gmail_download_attachment",
       "gws_gmail_create_draft",
       "gws_gmail_create_reply_draft",
       "gws_gmail_move_message",
@@ -94,6 +125,22 @@ describe("Gmail read tool registration", () => {
     for (const [name, tool] of tools) {
       expect(`${tool.description} ${tool.promptSnippet} ${tool.promptGuidelines?.join(" ")}`).toContain(name);
     }
+
+    const download = tools.get("gws_gmail_download_attachment")!;
+    expect(Object.keys(download.parameters.properties)).toEqual([
+      "messageId",
+      "attachmentId",
+      "outputFilename",
+      "sourceFilename",
+      "mediaType",
+      "expectedSize",
+    ]);
+    expect(download.parameters.required).toEqual(["messageId", "attachmentId"]);
+    expect(download.promptGuidelines?.join(" ")).toMatch(/explicit.*attachmentId|attachmentId.*explicit/i);
+    expect(download.promptGuidelines?.join(" ")).toContain("verbatim");
+    expect(tools.get("gws_gmail_read_message")!.promptGuidelines?.join(" ")).toContain(
+      "gws_gmail_download_attachment",
+    );
   });
 
   it("constructs bounded inbox queries and returns metadata without paging", async () => {
@@ -168,12 +215,45 @@ describe("Gmail read tool registration", () => {
 
     const search = await execute(tools.get("gws_gmail_search")!, { query: "   " });
     const read = await execute(tools.get("gws_gmail_read_message")!, { id: "   " });
+    const download = await execute(tools.get("gws_gmail_download_attachment")!, {
+      messageId: "message",
+      attachmentId: "   ",
+    });
 
     expect(search.isError).toBe(true);
     expect(search.content[0].text).toContain("query must not be blank");
     expect(read.isError).toBe(true);
     expect(read.content[0].text).toContain("ID must not be blank");
+    expect(download.isError).toBe(true);
+    expect(download.content[0].text).toBe("attachmentId must not be blank.");
     expect(provider.getClient).not.toHaveBeenCalled();
+  });
+
+  it("keeps unsafe names and provider secrets out of attachment tool failures", async () => {
+    const provider = {
+      getClient: vi.fn(async () => {
+        throw new Error("access_token=secret-token /private/unsafe/path");
+      }),
+    };
+    const { tools } = register(provider);
+    const tool = tools.get("gws_gmail_download_attachment")!;
+
+    const unsafeName = await execute(tool, {
+      messageId: "message",
+      attachmentId: "attachment",
+      outputFilename: "../private-fixture.bin",
+    });
+    expect(unsafeName.isError).toBe(true);
+    expect(JSON.stringify(unsafeName)).not.toMatch(/private-fixture|\.\.\//);
+    expect(provider.getClient).not.toHaveBeenCalled();
+
+    const apiFailure = await execute(tool, {
+      messageId: "message",
+      attachmentId: "attachment",
+      outputFilename: "safe.bin",
+    });
+    expect(apiFailure.isError).toBe(true);
+    expect(JSON.stringify(apiFailure)).not.toMatch(/secret-token|access_token|private\/unsafe/);
   });
 
   it("reads and parses a full message while forwarding abort signals", async () => {
@@ -196,6 +276,101 @@ describe("Gmail read tool registration", () => {
       messageId: "<synthetic-1@example.test>",
       body: "First plain section\n\nSecond plain section",
     });
+  });
+
+  it("runs search → one full read → one explicit download without refetching the message", async () => {
+    const root = await temporaryRoot();
+    const client = mockClient();
+    const { tools } = register(
+      { getClient: vi.fn(async () => client) },
+      { cwd: () => root, temporaryToken: () => "0123456789abcdef0123456789abcdef" },
+    );
+    const signal = new AbortController().signal;
+
+    await execute(tools.get("gws_gmail_search")!, { query: "has:attachment" }, signal);
+    const readResult = await execute(
+      tools.get("gws_gmail_read_message")!,
+      { id: "msg-synthetic-1" },
+      signal,
+    );
+    const readMessage = JSON.parse(readResult.content[0].text);
+    const selected = readMessage.attachments[0];
+    const downloadResult = await execute(
+      tools.get("gws_gmail_download_attachment")!,
+      {
+        messageId: readMessage.id,
+        attachmentId: selected.attachmentId,
+        outputFilename: "selected-report.pdf",
+        sourceFilename: selected.filename,
+        mediaType: selected.mediaType,
+        expectedSize: selected.size,
+      },
+      signal,
+    );
+
+    const messageGetCalls = vi.mocked(client.users.messages.get).mock.calls;
+    expect(messageGetCalls.filter(([request]) => request.format === "full")).toHaveLength(1);
+    expect(messageGetCalls.filter(([request]) => request.format === "metadata")).toHaveLength(1);
+    expect(client.users.messages.attachments.get).toHaveBeenCalledTimes(1);
+    expect(client.users.messages.attachments.get).toHaveBeenCalledWith(
+      { userId: "me", messageId: "msg-synthetic-1", id: "attachment-report" },
+      { signal },
+    );
+    expect(Object.keys(JSON.parse(downloadResult.content[0].text))).toEqual([
+      "path",
+      "mediaType",
+      "sizeBytes",
+      "sizeHuman",
+    ]);
+    expect(JSON.parse(downloadResult.content[0].text)).toEqual({
+      path: "./selected-report.pdf",
+      mediaType: "application/pdf",
+      sizeBytes: 4,
+      sizeHuman: "4 B",
+    });
+    expect(await fs.readFile(join(root, "selected-report.pdf"))).toEqual(Buffer.from([0, 255, 128, 65]));
+    expect(downloadResult.content[0].text).not.toContain(
+      Buffer.from([0, 255, 128, 65]).toString("base64url"),
+    );
+  });
+
+  it("serializes a bounded relative warning after successful publication", async () => {
+    const client = mockClient();
+    const events: string[] = [];
+    const token = "abcdef0123456789abcdef0123456789";
+    const { tools } = register(
+      { getClient: vi.fn(async () => client) },
+      {
+        cwd: () => "/synthetic-root",
+        temporaryToken: () => token,
+        fs: {
+          lstat: async () => { throw Object.assign(new Error("missing"), { code: "ENOENT" }); },
+          open: async () => ({
+            writeFile: async () => { events.push("write"); },
+            sync: async () => { events.push("sync"); },
+            close: async () => { events.push("close"); },
+          }),
+          link: async () => { events.push("link"); },
+          unlink: async () => { throw new Error("cleanup path /synthetic-root must stay hidden"); },
+        },
+      },
+    );
+
+    const result = await execute(tools.get("gws_gmail_download_attachment")!, {
+      messageId: "msg-synthetic-1",
+      attachmentId: "attachment-report",
+      outputFilename: "report.pdf",
+    });
+
+    expect(events).toEqual(["write", "sync", "close", "link"]);
+    expect(JSON.parse(result.content[0].text)).toEqual({
+      path: "./report.pdf",
+      mediaType: "application/octet-stream",
+      sizeBytes: 4,
+      sizeHuman: "4 B",
+      warnings: [`./.gws-gmail-attachment-${token}.tmp`],
+    });
+    expect(result.content[0].text).not.toContain("/synthetic-root");
   });
 
   it("uses only Gmail auth and sanitizes authentication/client failures", async () => {

@@ -7,6 +7,11 @@ import {
   type GmailClientFactory,
   type GmailClientProvider,
 } from "./client.js";
+import {
+  downloadGmailAttachment,
+  MAX_GMAIL_ATTACHMENT_BYTES,
+  type GmailAttachmentDownloadDependencies,
+} from "./attachments.js";
 import { buildPlainTextMessage, encodeBase64Url, sanitizeHeader } from "./mail.js";
 import { parseMessage, summarizeMessage } from "./messages.js";
 import { deriveReplyDraft, GmailReplyDerivationError } from "./reply.js";
@@ -14,6 +19,7 @@ import { deriveReplyDraft, GmailReplyDerivationError } from "./reply.js";
 export const GMAIL_TOOL_NAMES = {
   search: "gws_gmail_search",
   readMessage: "gws_gmail_read_message",
+  downloadAttachment: "gws_gmail_download_attachment",
   createDraft: "gws_gmail_create_draft",
   createReplyDraft: "gws_gmail_create_reply_draft",
   moveMessage: "gws_gmail_move_message",
@@ -23,6 +29,8 @@ export interface GmailDependencies {
   readonly auth: WorkspaceAuthService;
   readonly clientFactory?: GmailClientFactory;
   readonly clientProvider?: GmailClientProvider;
+  /** Test-only seams for attachment filesystem, CWD, and temporary-name behavior. */
+  readonly attachmentDownload?: Omit<GmailAttachmentDownloadDependencies, "clientProvider">;
 }
 
 let gmailMutationQueue = Promise.resolve();
@@ -143,10 +151,13 @@ export function registerGmail(pi: ExtensionAPI, dependencies: GmailDependencies)
   pi.registerTool({
     name: GMAIL_TOOL_NAMES.readMessage,
     label: "Google Workspace Gmail Read Message",
-    description: "Read one Gmail message by its Gmail message ID. Read-only.",
+    description:
+      "Read one Gmail message by its Gmail message ID, including recursive attachment metadata. Read-only.",
     promptSnippet: "gws_gmail_read_message: read a Gmail message by ID",
     promptGuidelines: [
-      "Use gws_gmail_read_message with an ID returned by gws_gmail_search to inspect a message body and headers.",
+      "Use gws_gmail_read_message with an ID returned by gws_gmail_search to inspect a message body, headers, and attachment metadata.",
+      "Only when the user explicitly intends to access an attachment, select its explicit attachmentId; never infer or auto-select an attachment by filename.",
+      "For a download, copy the selected attachment's filename, mediaType, and size verbatim into gws_gmail_download_attachment as sourceFilename, mediaType, and expectedSize. These are untrusted hints; messageId and attachmentId identify the bytes.",
     ],
     parameters: Type.Object({
       id: Type.String({ minLength: 1, description: "Gmail message ID from gws_gmail_search" }),
@@ -174,6 +185,65 @@ export function registerGmail(pi: ExtensionAPI, dependencies: GmailDependencies)
         };
       } catch (error) {
         return failure(error, "read the Gmail message");
+      }
+    },
+  });
+
+  pi.registerTool({
+    name: GMAIL_TOOL_NAMES.downloadAttachment,
+    label: "Google Workspace Gmail Download Attachment",
+    description:
+      "Download exactly one explicitly identified Gmail attachment into the current directory. Bounded read materialization; requires explicit user attachment-access intent.",
+    promptSnippet:
+      "gws_gmail_download_attachment: download one explicit Gmail attachment into the current directory",
+    promptGuidelines: [
+      "Use gws_gmail_download_attachment only when the user explicitly intends to access or download the selected attachment.",
+      "Supply messageId and one explicit attachmentId from gws_gmail_read_message; never select by filename, guess among attachments, or bulk-download.",
+      "Copy filename, mediaType, and size verbatim from the selected read result as sourceFilename, mediaType, and expectedSize. They are untrusted hints and do not identify or authorize bytes.",
+      "The tool never overwrites or auto-suffixes, writes only one file in the captured current directory, and rejects decoded attachments over 25 MiB. Retry collisions only with an explicit safe outputFilename.",
+    ],
+    parameters: Type.Object({
+      messageId: Type.String({ minLength: 1, description: "Gmail message ID from gws_gmail_read_message" }),
+      attachmentId: Type.String({ minLength: 1, description: "Explicit attachment ID from gws_gmail_read_message" }),
+      outputFilename: Type.Optional(
+        Type.String({ minLength: 1, description: "Optional safe destination filename, not a path" }),
+      ),
+      sourceFilename: Type.Optional(
+        Type.String({ description: "Untrusted filename copied verbatim from read-message metadata" }),
+      ),
+      mediaType: Type.Optional(
+        Type.String({ description: "Untrusted MIME type copied verbatim from read-message metadata" }),
+      ),
+      expectedSize: Type.Optional(
+        Type.Integer({
+          minimum: 0,
+          maximum: MAX_GMAIL_ATTACHMENT_BYTES,
+          description: "Untrusted decoded size copied verbatim from read-message metadata",
+        }),
+      ),
+    }),
+    async execute(_toolCallId, params, signal) {
+      if (!params.messageId.trim() || !params.attachmentId.trim()) {
+        const field = !params.messageId.trim() ? "messageId" : "attachmentId";
+        return {
+          content: [{ type: "text" as const, text: `${field} must not be blank.` }],
+          isError: true,
+          details: { app: "gmail" as const },
+        };
+      }
+
+      try {
+        const result = await downloadGmailAttachment(
+          params,
+          { ...dependencies.attachmentDownload, clientProvider: clients },
+          signal,
+        );
+        return {
+          content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
+          details: { app: "gmail" as const },
+        };
+      } catch (error) {
+        return failure(error, "download the Gmail attachment");
       }
     },
   });

@@ -47,6 +47,7 @@ describe("extension composition root", () => {
     expect(pi.registerTool.mock.calls.map(([tool]) => tool.name)).toEqual([
       "gws_gmail_search",
       "gws_gmail_read_message",
+      "gws_gmail_download_attachment",
       "gws_gmail_create_draft",
       "gws_gmail_create_reply_draft",
       "gws_gmail_move_message",

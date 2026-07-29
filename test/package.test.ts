@@ -28,6 +28,9 @@ describe("package presentation", () => {
     expect(readme).toContain("~/.pi/agent/gws-oauth/gmail-token.json");
     expect(readme).toContain("~/.pi/agent/gws-oauth/calendar-token.json");
     expect(readme).toContain("https://www.googleapis.com/auth/gmail.modify");
+    expect(readme).toContain("gws_gmail_download_attachment");
+    expect(readme).toContain("25 MiB");
+    expect(readme).toContain("cleanup is caller-owned");
     expect(readme).toContain(
       "https://www.googleapis.com/auth/calendar.calendarlist.readonly",
     );
