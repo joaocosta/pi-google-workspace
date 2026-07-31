@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "pi_google_workspace",
+  "project_id": "82933333-de61-4013-b86f-5b35a474ef62"
+}
