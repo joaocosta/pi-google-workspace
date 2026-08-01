@@ -17,7 +17,10 @@
   ],
   "scripts": {
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint --cache --cache-location node_modules/.cache/eslint/ --max-warnings 0 src test eslint.config.js",
+    "lint:fix": "eslint --cache --cache-location node_modules/.cache/eslint/ --max-warnings 0 --fix src test eslint.config.js",
+    "check": "printf '\\n==> typecheck\\n'; npm run typecheck; typecheck_status=$?; printf '\\n==> lint\\n'; npm run lint; lint_status=$?; test \"$typecheck_status\" -eq 0 -a \"$lint_status\" -eq 0"
   },
   "dependencies": {
     "googleapis": "^173.0.0",
@@ -28,9 +31,12 @@
     "typebox": "*"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@types/luxon": "^3.7.2",
     "@types/node": "^24.0.0",
+    "eslint": "^10.8.0",
     "typescript": "^5.9.0",
+    "typescript-eslint": "^8.65.0",
     "vitest": "^4.0.0"
   },
   "pi": {
