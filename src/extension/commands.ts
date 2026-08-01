@@ -80,16 +80,17 @@ export function registerAuthCommands(
       const matches = ["on", "off"].filter((value) => value.startsWith(prefix.trim().toLowerCase()));
       return matches.length ? matches.map((value) => ({ value, label: value })) : null;
     },
-    async handler(args, ctx) {
+    handler(args, ctx) {
       const setting = args.trim().toLowerCase();
       if (setting !== "" && setting !== "on" && setting !== "off") {
         ctx.ui.notify("Usage: /gws [on|off]", "error");
-        return;
+        return Promise.resolve();
       }
 
       const enabled = setting === "" ? !tools.isEnabled() : setting === "on";
       tools.setEnabled(enabled);
       ctx.ui.notify(`Google Workspace tools ${enabled ? "enabled" : "disabled"}.`, "info");
+      return Promise.resolve();
     },
   });
 

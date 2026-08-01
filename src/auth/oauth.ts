@@ -58,9 +58,9 @@ function isNonEmptyString(value: unknown): value is string {
 }
 
 function credentialSection(secret: JsonObject): JsonObject | undefined {
-  const candidate = secret.installed ?? secret.web;
+  const candidate = secret["installed"] ?? secret["web"];
   return typeof candidate === "object" && candidate !== null && !Array.isArray(candidate)
-    ? (candidate as JsonObject)
+    ? candidate
     : undefined;
 }
 
@@ -68,8 +68,30 @@ function validToken(token: OAuthCredentials): boolean {
   return isNonEmptyString(token.access_token) || isNonEmptyString(token.refresh_token);
 }
 
+function normalizeOAuthCredentials(credentials: {
+  readonly access_token?: string | null | undefined;
+  readonly refresh_token?: string | null | undefined;
+  readonly scope?: string | undefined;
+  readonly token_type?: string | null | undefined;
+  readonly expiry_date?: number | null | undefined;
+  readonly id_token?: string | null | undefined;
+}): OAuthCredentials {
+  return {
+    ...(credentials.access_token !== undefined
+      ? { access_token: credentials.access_token }
+      : {}),
+    ...(credentials.refresh_token !== undefined
+      ? { refresh_token: credentials.refresh_token }
+      : {}),
+    ...(credentials.scope !== undefined ? { scope: credentials.scope } : {}),
+    ...(credentials.token_type !== undefined ? { token_type: credentials.token_type } : {}),
+    ...(credentials.expiry_date !== undefined ? { expiry_date: credentials.expiry_date } : {}),
+    ...(credentials.id_token !== undefined ? { id_token: credentials.id_token } : {}),
+  };
+}
+
 function missingFile(error: unknown): boolean {
-  return (error as NodeJS.ErrnoException)?.code === "ENOENT";
+  return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
 }
 
 function missingClientSecretMessage(path: string): string {
@@ -87,7 +109,10 @@ function missingClientSecretMessage(path: string): string {
 async function closeServer(server: ReturnType<typeof createServer>): Promise<void> {
   if (!server.listening) return;
   await new Promise<void>((resolve, reject) => {
-    server.close((error) => (error ? reject(error) : resolve()));
+    server.close((error) => {
+      if (error) reject(error);
+      else resolve();
+    });
   });
 }
 
@@ -114,7 +139,7 @@ export const createNodeLoopbackServer: LoopbackServerFactory = async (displayNam
       resolve(address.port);
     });
   });
-  const redirectUri = `http://127.0.0.1:${port}/oauth2callback`;
+  const redirectUri = `http://127.0.0.1:${String(port)}/oauth2callback`;
 
   server.on("request", (request, response) => {
     if (settled) {
@@ -155,10 +180,16 @@ export const createGoogleOAuthClient: OAuthClientFactory = (clientId, clientSecr
     generateAuthUrl: (options) => client.generateAuthUrl({ ...options, scope: [...options.scope] }),
     async getToken(code) {
       const result = await client.getToken(code);
-      return { tokens: result.tokens as OAuthCredentials };
+      return { tokens: normalizeOAuthCredentials(result.tokens) };
     },
-    setCredentials: (credentials) => client.setCredentials(credentials),
-    onTokens: (listener) => client.on("tokens", (credentials) => listener(credentials as OAuthCredentials)),
+    setCredentials: (credentials) => {
+      client.setCredentials(credentials);
+    },
+    onTokens: (listener) => {
+      client.on("tokens", (credentials) => {
+        listener(normalizeOAuthCredentials(credentials));
+      });
+    },
   };
 };
 
@@ -191,10 +222,12 @@ export function createWorkspaceAuth(options: WorkspaceAuthOptions): WorkspaceAut
     }
 
     const config = credentialSection(secret);
-    if (!config || !isNonEmptyString(config.client_id) || !isNonEmptyString(config.client_secret)) {
+    const clientId = config?.["client_id"];
+    const clientSecret = config?.["client_secret"];
+    if (!isNonEmptyString(clientId) || !isNonEmptyString(clientSecret)) {
       throw new SafeAuthError(`OAuth client credentials at ${store.paths.clientSecret} are invalid.`);
     }
-    return { clientId: config.client_id, clientSecret: config.client_secret };
+    return { clientId, clientSecret };
   }
 
   async function tokenState(app: WorkspaceAppKey): Promise<LocalAuthState> {

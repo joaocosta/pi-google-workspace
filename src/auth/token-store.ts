@@ -8,11 +8,12 @@ export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue
 export type JsonObject = { [key: string]: JsonValue | undefined };
 
 export interface OAuthCredentials extends JsonObject {
-  access_token?: string;
+  access_token?: string | null;
   refresh_token?: string | null;
   scope?: string;
-  token_type?: string;
-  expiry_date?: number;
+  token_type?: string | null;
+  expiry_date?: number | null;
+  id_token?: string | null;
 }
 
 export type TokenStoreFileSystem = Pick<
@@ -38,8 +39,12 @@ function isJsonObject(value: unknown): value is JsonObject {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function errorCode(error: unknown): unknown {
+  return typeof error === "object" && error !== null && "code" in error ? error.code : undefined;
+}
+
 function unsupportedMode(error: unknown): boolean {
-  const code = (error as NodeJS.ErrnoException)?.code;
+  const code = errorCode(error);
   return code === "ENOSYS" || code === "ENOTSUP" || code === "EOPNOTSUPP";
 }
 
@@ -80,7 +85,10 @@ async function writeJsonAtomic(
   value: JsonObject,
 ): Promise<void> {
   await ensureConfigDirectory(fs, directory);
-  const temporary = join(directory, `.${basename(destination)}.${process.pid}.${randomUUID()}.tmp`);
+  const temporary = join(
+    directory,
+    `.${basename(destination)}.${String(process.pid)}.${randomUUID()}.tmp`,
+  );
 
   try {
     await fs.writeFile(temporary, `${JSON.stringify(value, null, 2)}\n`, {
@@ -115,7 +123,7 @@ export function createTokenStore(options: TokenStoreOptions = {}): TokenStore {
 
     async readToken(app: WorkspaceAppKey): Promise<OAuthCredentials> {
       await ensureConfigDirectory(fs, paths.configDirectory);
-      return (await readJsonObject(fs, paths.tokens[app], `${app} token`)) as OAuthCredentials;
+      return readJsonObject(fs, paths.tokens[app], `${app} token`);
     },
 
     async writeToken(app: WorkspaceAppKey, credentials: OAuthCredentials): Promise<OAuthCredentials> {
@@ -123,7 +131,7 @@ export function createTokenStore(options: TokenStoreOptions = {}): TokenStore {
       try {
         existing = await this.readToken(app);
       } catch (error) {
-        if ((error as NodeJS.ErrnoException)?.code !== "ENOENT") throw error;
+        if (errorCode(error) !== "ENOENT") throw error;
       }
 
       const merged: OAuthCredentials = { ...existing, ...credentials };

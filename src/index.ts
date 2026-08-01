@@ -75,19 +75,29 @@ export function createGoogleWorkspaceExtension(
     });
     registerGmail(pi, {
       auth,
-      clientFactory: dependencies.gmailClientFactory,
-      clientProvider: dependencies.gmailClientProvider,
+      ...(dependencies.gmailClientFactory
+        ? { clientFactory: dependencies.gmailClientFactory }
+        : {}),
+      ...(dependencies.gmailClientProvider
+        ? { clientProvider: dependencies.gmailClientProvider }
+        : {}),
     });
     registerCalendar(pi, {
       auth,
-      clientFactory: dependencies.calendarClientFactory,
-      clientProvider: dependencies.calendarClientProvider,
-      time: dependencies.calendarTime,
+      ...(dependencies.calendarClientFactory
+        ? { clientFactory: dependencies.calendarClientFactory }
+        : {}),
+      ...(dependencies.calendarClientProvider
+        ? { clientProvider: dependencies.calendarClientProvider }
+        : {}),
+      ...(dependencies.calendarTime ? { time: dependencies.calendarTime } : {}),
     });
 
     // State is deliberately in-memory only and reset for every newly bound session.
     // The CLI flag supplies an explicit initial state for one-shot/headless use.
-    pi.on("session_start", () => setToolsEnabled(pi.getFlag("gws-enabled") === true));
+    pi.on("session_start", () => {
+      setToolsEnabled(pi.getFlag("gws-enabled") === true);
+    });
   };
 }
 
