@@ -29,4 +29,23 @@ export default tseslint.config(
       "@typescript-eslint/switch-exhaustiveness-check": "error",
     },
   },
+  {
+    // Vitest call records and generated plugin contracts expose intentionally loose values,
+    // synchronous promise stubs, and test-established presence that these rules cannot model.
+    files: ["test/**/*.test.ts"],
+    rules: {
+      "@typescript-eslint/require-await": "off",
+      "@typescript-eslint/unbound-method": "off",
+      "@typescript-eslint/no-non-null-assertion": "off",
+      "@typescript-eslint/no-unsafe-assignment": "off",
+      "@typescript-eslint/no-unsafe-member-access": "off",
+      "@typescript-eslint/no-unsafe-argument": "off",
+      "@typescript-eslint/no-unsafe-return": "off",
+      "@typescript-eslint/no-unsafe-call": "off",
+      "@typescript-eslint/no-explicit-any": "off",
+      "@typescript-eslint/no-unsafe-function-type": "off",
+      "@typescript-eslint/restrict-template-expressions": "off",
+      "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_" }],
+    },
+  },
 );

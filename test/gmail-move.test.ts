@@ -1,3 +1,4 @@
+import { firstText, toolDetails, type ToolOptions } from "./fixtures/tools.js";
 import { describe, expect, it, vi } from "vitest";
 import { createWorkspaceAppRegistry } from "../src/auth/apps.js";
 import type { WorkspaceAuthService } from "../src/auth/oauth.js";
@@ -5,12 +6,7 @@ import { createTokenStore } from "../src/auth/token-store.js";
 import type { GmailClient, GmailClientProvider } from "../src/gmail/client.js";
 import { registerGmail } from "../src/gmail/index.js";
 
-type ToolOptions = {
-  description: string;
-  promptSnippet?: string;
-  promptGuidelines?: string[];
-  execute: Function;
-};
+
 
 function authService(): WorkspaceAuthService {
   return {
@@ -147,8 +143,8 @@ describe("Gmail move tool", () => {
     expect(trash).not.toHaveBeenCalled();
     expect(untrash).not.toHaveBeenCalled();
     expect(ctx.ui.confirm).not.toHaveBeenCalled();
-    expect(result.details.previousLabelIds).toEqual(["INBOX", "STARRED", "Label_42"]);
-    expect(result.details.destination).toBe(destination);
+    expect(toolDetails(result)["previousLabelIds"]).toEqual(["INBOX", "STARRED", "Label_42"]);
+    expect(toolDetails(result)["destination"]).toBe(destination);
   });
 
   it("uses Gmail trash while preserving the prior-label record", async () => {
@@ -163,8 +159,8 @@ describe("Gmail move tool", () => {
     );
     expect(modify).not.toHaveBeenCalled();
     expect(untrash).not.toHaveBeenCalled();
-    expect(result.details.previousLabelIds).toEqual(["INBOX", "IMPORTANT", "Label_42"]);
-    expect(result.details.labelIds).toEqual(["TRASH", "STARRED"]);
+    expect(toolDetails(result)["previousLabelIds"]).toEqual(["INBOX", "IMPORTANT", "Label_42"]);
+    expect(toolDetails(result)["labelIds"]).toEqual(["TRASH", "STARRED"]);
   });
 
   it("restores a trashed message before applying its destination transition", async () => {
@@ -185,7 +181,7 @@ describe("Gmail move tool", () => {
       },
       { signal: undefined },
     );
-    expect(untrash.mock.invocationCallOrder[0]).toBeLessThan(modify.mock.invocationCallOrder[0]);
+    expect(untrash.mock.invocationCallOrder[0] ?? 0).toBeLessThan(modify.mock.invocationCallOrder[0] ?? 0);
   });
 
   it("rejects a blank ID before auth, preview, confirmation, or mutation", async () => {
@@ -197,7 +193,7 @@ describe("Gmail move tool", () => {
     const result = await execute(tool, { id: "  ", destination: "trash" }, ctx);
 
     expect(result.isError).toBe(true);
-    expect(result.content[0].text).toContain("ID must not be blank");
+    expect(firstText(result)).toContain("ID must not be blank");
     expect(provider.getClient).not.toHaveBeenCalled();
     expect(ctx.ui.confirm).not.toHaveBeenCalled();
   });
@@ -212,7 +208,7 @@ describe("Gmail move tool", () => {
     const result = await execute(tool, { id: "msg-failure", destination: "archive" });
 
     expect(result.isError).toBe(true);
-    expect(result.content[0].text).toContain("/gws-login gmail");
+    expect(firstText(result)).toContain("/gws-login gmail");
     expect(JSON.stringify(result)).not.toMatch(
       /synthetic-secret|synthetic-client|access_token|client_secret/,
     );
@@ -232,7 +228,7 @@ describe("Gmail move tool", () => {
 
     const first = execute(tool, { id: "msg-first", destination: "trash" });
     const second = execute(tool, { id: "msg-second", destination: "archive" });
-    await vi.waitFor(() => expect(trash).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => { expect(trash).toHaveBeenCalledTimes(1); });
     expect(get).toHaveBeenCalledTimes(1);
 
     releaseTrash();

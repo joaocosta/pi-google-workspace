@@ -1,4 +1,5 @@
 import type { gmail_v1 } from "googleapis";
+import { firstText, type ToolOptions } from "./fixtures/tools.js";
 import { describe, expect, it, vi } from "vitest";
 import { createWorkspaceAppRegistry } from "../src/auth/apps.js";
 import type { WorkspaceAuthService } from "../src/auth/oauth.js";
@@ -13,12 +14,7 @@ import {
   normalizeReplySubject,
 } from "../src/gmail/reply.js";
 
-type ToolOptions = {
-  description: string;
-  promptSnippet?: string;
-  promptGuidelines?: string[];
-  execute: Function;
-};
+
 
 function authService(): WorkspaceAuthService {
   return {
@@ -125,7 +121,7 @@ describe("Gmail reply derivation", () => {
     expect(() => deriveReplyDraft(malformed, "parent-message")).toThrow(GmailReplyDerivationError);
     expect(() =>
       deriveReplyDraft(
-        source(sourceHeaders.filter((header) => !["Reply-To", "From"].includes(header.name!))),
+        source(sourceHeaders.filter((header) => !["Reply-To", "From"].includes(header.name))),
         "parent-message",
       ),
     ).toThrow(/no valid Reply-To or From mailbox/i);
@@ -174,7 +170,9 @@ describe("gws_gmail_create_reply_draft", () => {
       "Confirm Gmail reply draft",
       expect.stringContaining(body),
     );
-    expect(ctx.ui.confirm.mock.calls[0][1]).toContain("Replying to: \"Synthetic Sender\" <sender@example.test>");
+    expect(ctx.ui.confirm.mock.calls[0]?.[1] ?? "").toContain(
+      "Replying to: \"Synthetic Sender\" <sender@example.test>",
+    );
     expect(create).toHaveBeenCalledWith(
       {
         userId: "me",
@@ -182,14 +180,14 @@ describe("gws_gmail_create_reply_draft", () => {
       },
       { signal },
     );
-    const raw = decodeRaw(create.mock.calls[0][0].requestBody.message.raw);
+    const raw = decodeRaw(create.mock.calls[0]?.[0].requestBody.message.raw ?? "");
     expect(raw.match(/^To:/gm)).toHaveLength(1);
     expect(raw).toContain("To: reply@example.test\r\n");
     expect(raw).not.toContain("ignored@example.test");
     expect(raw).toContain("In-Reply-To: <parent@example.test>");
     expect(raw).toContain("References: <root@example.test> <parent@example.test>");
     expect(raw.endsWith(`\r\n\r\n${body}`)).toBe(true);
-    expect(result.content[0].text).toMatch(/reply-draft.*reply-message.*parent-message.*not been sent/i);
+    expect(firstText(result)).toMatch(/reply-draft.*reply-message.*parent-message.*not been sent/i);
     expect(result.details).toEqual({
       app: "gmail",
       draftId: "reply-draft",
@@ -227,7 +225,7 @@ describe("gws_gmail_create_reply_draft", () => {
     const invalidTool = register({ getClient: vi.fn(async () => invalid.client) });
     const result = await execute(invalidTool, { id: "parent-message", body: "Cannot thread" });
     expect(result.isError).toBe(true);
-    expect(result.content[0].text).toMatch(/no Message-ID header/i);
+    expect(firstText(result)).toMatch(/no Message-ID header/i);
     expect(invalid.create).not.toHaveBeenCalled();
   });
 
@@ -241,7 +239,7 @@ describe("gws_gmail_create_reply_draft", () => {
     const result = await execute(tool, { id: "parent-message", body: "Explicit reply" });
 
     expect(result.isError).toBe(true);
-    expect(result.content[0].text).toContain("/gws-login gmail");
+    expect(firstText(result)).toContain("/gws-login gmail");
     expect(JSON.stringify(result)).not.toMatch(
       /synthetic-secret|synthetic-client|access_token|client_secret/,
     );

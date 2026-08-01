@@ -25,7 +25,6 @@ describe("Gmail attachment input preparation", () => {
     const prepared = prepare({
       messageId: "  message-id  ",
       attachmentId: " attachment-id ",
-      sourceFilename: undefined,
       outputFilename: "chosen.bin",
     });
 

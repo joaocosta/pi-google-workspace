@@ -1,3 +1,4 @@
+import { firstText, toolDetails, type ToolOptions } from "./fixtures/tools.js";
 import { describe, expect, it, vi } from "vitest";
 import { createWorkspaceAppRegistry } from "../src/auth/apps.js";
 import type { WorkspaceAuthService } from "../src/auth/oauth.js";
@@ -10,13 +11,7 @@ import {
 } from "../src/calendar/events.js";
 import { registerCalendar } from "../src/calendar/index.js";
 
-type ToolOptions = {
-  parameters: object;
-  description: string;
-  promptSnippet?: string;
-  promptGuidelines?: string[];
-  execute: Function;
-};
+
 
 function authService(): WorkspaceAuthService {
   return {
@@ -196,8 +191,8 @@ describe("gws_calendar_create_event", () => {
     );
 
     expect(confirm).toHaveBeenCalledTimes(1);
-    expect(confirm.mock.calls[0][1]).toContain("Calendar: Synthetic Team (team@example.test)");
-    expect(confirm.mock.calls[0][1]).toContain("Time zone: Europe/Lisbon");
+    expect(confirm.mock.calls[0]?.[1] ?? "").toContain("Calendar: Synthetic Team (team@example.test)");
+    expect(confirm.mock.calls[0]?.[1] ?? "").toContain("Time zone: Europe/Lisbon");
     expect(client.events.insert).toHaveBeenCalledWith(
       {
         calendarId: "team@example.test",
@@ -213,7 +208,7 @@ describe("gws_calendar_create_event", () => {
       },
       { signal: undefined },
     );
-    expect(JSON.parse(result.content[0].text)).toMatchObject({
+    expect(JSON.parse(firstText(result))).toMatchObject({
       calendarId: "team@example.test",
       id: deriveCalendarEventId("timed-insert"),
       summary: "Planning",
@@ -230,8 +225,8 @@ describe("gws_calendar_create_event", () => {
     };
 
     const interactive = await execute(tool, params, { hasUI: true });
-    expect(interactive.confirm.mock.calls[0][1]).toContain("Synthetic Primary (owner@example.test)");
-    expect(interactive.confirm.mock.calls[0][1]).toContain("Exclusive end: 2026-06-05");
+    expect(interactive.confirm.mock.calls[0]?.[1] ?? "").toContain("Synthetic Primary (owner@example.test)");
+    expect(interactive.confirm.mock.calls[0]?.[1] ?? "").toContain("Exclusive end: 2026-06-05");
 
     await execute(tool, params, { hasUI: false, toolCallId: "headless-call" });
     expect(client.events.insert).toHaveBeenCalledTimes(2);
@@ -247,7 +242,7 @@ describe("gws_calendar_create_event", () => {
     );
 
     expect(result.isError).toBeUndefined();
-    expect(result.details.cancelled).toBe(true);
+    expect(toolDetails(result)["cancelled"]).toBe(true);
     expect(client.events.insert).not.toHaveBeenCalled();
   });
 
@@ -261,7 +256,7 @@ describe("gws_calendar_create_event", () => {
       { hasUI: true },
     );
 
-    expect(confirm.mock.calls[0][1]).toContain("fallback@example.test (fallback@example.test)");
+    expect(confirm.mock.calls[0]?.[1] ?? "").toContain("fallback@example.test (fallback@example.test)");
     expect(client.events.insert).toHaveBeenCalledTimes(1);
   });
 
@@ -278,7 +273,7 @@ describe("gws_calendar_create_event", () => {
     );
 
     expect(result.isError).toBe(true);
-    expect(result.content[0].text).toContain("Choose a writable calendar");
+    expect(firstText(result)).toContain("Choose a writable calendar");
     expect(confirm).not.toHaveBeenCalled();
     expect(client.events.insert).not.toHaveBeenCalled();
   });
@@ -310,7 +305,7 @@ describe("gws_calendar_create_event", () => {
       { signal: undefined },
     );
     expect(result.details).toMatchObject({ eventId, idempotent: true });
-    expect(JSON.parse(result.content[0].text).idempotent).toBe(true);
+    expect(JSON.parse(firstText(result)).idempotent).toBe(true);
     expect(client.events.insert).toHaveBeenCalledTimes(1);
   });
 
@@ -330,8 +325,8 @@ describe("gws_calendar_create_event", () => {
         { calendarId: "selected@example.test", summary: "Failure", timing: timed },
       );
       expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain("selected@example.test");
-      expect(result.content[0].text).toContain("writable calendar");
+      expect(firstText(result)).toContain("selected@example.test");
+      expect(firstText(result)).toContain("writable calendar");
       expect(JSON.stringify(result)).not.toMatch(/access_token|secret/);
       expect(client.events.insert).toHaveBeenCalledTimes(1);
     }

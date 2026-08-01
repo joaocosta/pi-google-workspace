@@ -1,6 +1,7 @@
 import * as fs from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { firstText, type ToolOptions } from "./fixtures/tools.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createWorkspaceAppRegistry } from "../src/auth/apps.js";
 import type { OAuthClient, WorkspaceAuthService } from "../src/auth/oauth.js";
@@ -14,16 +15,7 @@ import type { GmailAttachmentDownloadDependencies } from "../src/gmail/attachmen
 import { buildGmailSearchQuery, registerGmail } from "../src/gmail/index.js";
 import { nestedMultipartMessage } from "./fixtures/gmail-messages.js";
 
-type ToolOptions = {
-  description: string;
-  promptSnippet?: string;
-  promptGuidelines?: string[];
-  parameters: {
-    properties: Record<string, unknown>;
-    required?: string[];
-  };
-  execute: Function;
-};
+
 
 const temporaryRoots: string[] = [];
 
@@ -56,7 +48,11 @@ function register(
   const pi = {
     registerTool: vi.fn((tool: ToolOptions & { name: string }) => tools.set(tool.name, tool)),
   };
-  registerGmail(pi as never, { auth: authService(), clientProvider, attachmentDownload });
+  registerGmail(pi as never, {
+    auth: authService(),
+    clientProvider,
+    ...(attachmentDownload === undefined ? {} : { attachmentDownload }),
+  });
   return { tools, pi };
 }
 
@@ -172,7 +168,7 @@ describe("Gmail read tool registration", () => {
       },
       { signal },
     );
-    const output = JSON.parse(result.content[0].text);
+    const output = JSON.parse(firstText(result));
     expect(output[0]).toMatchObject({
       id: "msg-synthetic-1",
       threadId: "thread-synthetic-1",
@@ -221,11 +217,11 @@ describe("Gmail read tool registration", () => {
     });
 
     expect(search.isError).toBe(true);
-    expect(search.content[0].text).toContain("query must not be blank");
+    expect(firstText(search)).toContain("query must not be blank");
     expect(read.isError).toBe(true);
-    expect(read.content[0].text).toContain("ID must not be blank");
+    expect(firstText(read)).toContain("ID must not be blank");
     expect(download.isError).toBe(true);
-    expect(download.content[0].text).toBe("attachmentId must not be blank.");
+    expect(firstText(download)).toBe("attachmentId must not be blank.");
     expect(provider.getClient).not.toHaveBeenCalled();
   });
 
@@ -271,7 +267,7 @@ describe("Gmail read tool registration", () => {
       { userId: "me", id: "msg-synthetic-1", format: "full" },
       { signal },
     );
-    expect(JSON.parse(result.content[0].text)).toMatchObject({
+    expect(JSON.parse(firstText(result))).toMatchObject({
       id: "msg-synthetic-1",
       messageId: "<synthetic-1@example.test>",
       body: "First plain section\n\nSecond plain section",
@@ -293,7 +289,7 @@ describe("Gmail read tool registration", () => {
       { id: "msg-synthetic-1" },
       signal,
     );
-    const readMessage = JSON.parse(readResult.content[0].text);
+    const readMessage = JSON.parse(firstText(readResult));
     const selected = readMessage.attachments[0];
     const downloadResult = await execute(
       tools.get("gws_gmail_download_attachment")!,
@@ -316,20 +312,20 @@ describe("Gmail read tool registration", () => {
       { userId: "me", messageId: "msg-synthetic-1", id: "attachment-report" },
       { signal },
     );
-    expect(Object.keys(JSON.parse(downloadResult.content[0].text))).toEqual([
+    expect(Object.keys(JSON.parse(firstText(downloadResult)))).toEqual([
       "path",
       "mediaType",
       "sizeBytes",
       "sizeHuman",
     ]);
-    expect(JSON.parse(downloadResult.content[0].text)).toEqual({
+    expect(JSON.parse(firstText(downloadResult))).toEqual({
       path: "./selected-report.pdf",
       mediaType: "application/pdf",
       sizeBytes: 4,
       sizeHuman: "4 B",
     });
     expect(await fs.readFile(join(root, "selected-report.pdf"))).toEqual(Buffer.from([0, 255, 128, 65]));
-    expect(downloadResult.content[0].text).not.toContain(
+    expect(firstText(downloadResult)).not.toContain(
       Buffer.from([0, 255, 128, 65]).toString("base64url"),
     );
   });
@@ -363,14 +359,14 @@ describe("Gmail read tool registration", () => {
     });
 
     expect(events).toEqual(["write", "sync", "close", "link"]);
-    expect(JSON.parse(result.content[0].text)).toEqual({
+    expect(JSON.parse(firstText(result))).toEqual({
       path: "./report.pdf",
       mediaType: "application/octet-stream",
       sizeBytes: 4,
       sizeHuman: "4 B",
       warnings: [`./.gws-gmail-attachment-${token}.tmp`],
     });
-    expect(result.content[0].text).not.toContain("/synthetic-root");
+    expect(firstText(result)).not.toContain("/synthetic-root");
   });
 
   it("uses only Gmail auth and sanitizes authentication/client failures", async () => {
@@ -390,7 +386,7 @@ describe("Gmail read tool registration", () => {
     });
     const result = await execute(tools.get("gws_gmail_read_message")!, { id: "missing" });
     expect(result.isError).toBe(true);
-    expect(result.content[0].text).toContain("/gws-login gmail");
+    expect(firstText(result)).toContain("/gws-login gmail");
     expect(JSON.stringify(result)).not.toMatch(/secret-token|secret-client|access_token|client_secret/);
   });
 });

@@ -1,3 +1,4 @@
+import { firstText, type ToolOptions } from "./fixtures/tools.js";
 import { describe, expect, it, vi } from "vitest";
 import { createWorkspaceAppRegistry } from "../src/auth/apps.js";
 import type { WorkspaceAuthService } from "../src/auth/oauth.js";
@@ -10,12 +11,7 @@ import {
 } from "../src/calendar/events.js";
 import { registerCalendar } from "../src/calendar/index.js";
 
-type ToolOptions = {
-  description: string;
-  promptSnippet?: string;
-  promptGuidelines?: string[];
-  execute: Function;
-};
+
 
 function authService(): WorkspaceAuthService {
   return {
@@ -196,7 +192,7 @@ describe("Calendar event listing", () => {
       },
       { signal: undefined },
     );
-    expect(JSON.parse(result.content[0].text)).toEqual({
+    expect(JSON.parse(firstText(result))).toEqual({
       events: [],
       nextPageToken: "next-events-page",
     });
@@ -240,7 +236,7 @@ describe("Calendar event listing", () => {
 
     const result = await execute(tool, {});
 
-    expect(JSON.parse(result.content[0].text).events).toEqual([
+    expect(JSON.parse(firstText(result)).events).toEqual([
       {
         calendarId: "primary",
         id: "timed-event",
@@ -311,7 +307,7 @@ describe("Calendar event listing", () => {
     );
     const failed = await execute(failedTool, {});
     expect(failed.isError).toBe(true);
-    expect(failed.content[0].text).toContain("/gws-login calendar");
+    expect(firstText(failed)).toContain("/gws-login calendar");
     expect(JSON.stringify(failed)).not.toMatch(
       /secret-token|secret-client|access_token|client_secret/,
     );

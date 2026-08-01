@@ -1,3 +1,4 @@
+import { firstText, type ToolOptions } from "./fixtures/tools.js";
 import { describe, expect, it, vi } from "vitest";
 import { createWorkspaceAppRegistry } from "../src/auth/apps.js";
 import type { OAuthClient, WorkspaceAuthService } from "../src/auth/oauth.js";
@@ -9,12 +10,7 @@ import {
 } from "../src/calendar/client.js";
 import { registerCalendar } from "../src/calendar/index.js";
 
-type ToolOptions = {
-  description: string;
-  promptSnippet?: string;
-  promptGuidelines?: string[];
-  execute: Function;
-};
+
 
 function authService(overrides: Partial<WorkspaceAuthService> = {}): WorkspaceAuthService {
   return {
@@ -124,7 +120,7 @@ describe("Calendar discovery", () => {
       { maxResults: 2, pageToken: "current-synthetic-page" },
       { signal },
     );
-    expect(JSON.parse(result.content[0].text)).toEqual({
+    expect(JSON.parse(firstText(result))).toEqual({
       calendars: [
         {
           id: "team@example.test",
@@ -156,12 +152,12 @@ describe("Calendar discovery", () => {
     const tool = tools.get("gws_calendar_list")!;
 
     const empty = await execute(tool, {});
-    expect(JSON.parse(empty.content[0].text)).toEqual({ calendars: [] });
+    expect(JSON.parse(firstText(empty))).toEqual({ calendars: [] });
 
     for (const maxResults of [0, 11, 1.5]) {
       const result = await execute(tool, { maxResults });
       expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain("integer from 1 to 10");
+      expect(firstText(result)).toContain("integer from 1 to 10");
     }
     expect(provider.getClient).toHaveBeenCalledTimes(1);
   });
@@ -184,7 +180,7 @@ describe("Calendar discovery", () => {
     });
     const result = await execute(tools.get("gws_calendar_list")!, {});
     expect(result.isError).toBe(true);
-    expect(result.content[0].text).toContain("/gws-login calendar");
+    expect(firstText(result)).toContain("/gws-login calendar");
     expect(JSON.stringify(result)).not.toMatch(/secret-token|secret-client|access_token|client_secret/);
   });
 });

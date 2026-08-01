@@ -1,3 +1,4 @@
+import { firstText, type ToolOptions } from "./fixtures/tools.js";
 import { describe, expect, it, vi } from "vitest";
 import { createWorkspaceAppRegistry } from "../src/auth/apps.js";
 import type { WorkspaceAuthService } from "../src/auth/oauth.js";
@@ -5,12 +6,7 @@ import { createTokenStore } from "../src/auth/token-store.js";
 import type { GmailClient, GmailClientProvider } from "../src/gmail/client.js";
 import { registerGmail } from "../src/gmail/index.js";
 
-type ToolOptions = {
-  description: string;
-  promptSnippet?: string;
-  promptGuidelines?: string[];
-  execute: Function;
-};
+
 
 function authService(): WorkspaceAuthService {
   return {
@@ -111,7 +107,7 @@ describe("gws_gmail_create_draft", () => {
       "Confirm Gmail draft",
       expect.stringContaining("To: recipient@example.test"),
     );
-    const preview = ctx.ui.confirm.mock.calls[0][1];
+    const preview = ctx.ui.confirm.mock.calls[0]?.[1] ?? "";
     expect(preview).toContain("Cc: copy@example.test");
     expect(preview).toContain("Bcc: hidden@example.test");
     expect(preview).toContain("Subject: Olá X-Injected: no");
@@ -125,13 +121,13 @@ describe("gws_gmail_create_draft", () => {
       },
       { signal },
     );
-    const raw = decodeRaw(create.mock.calls[0][0].requestBody.message.raw);
+    const raw = decodeRaw(create.mock.calls[0]?.[0].requestBody.message.raw ?? "");
     expect(raw).toContain("Cc: copy@example.test\r\nBcc: hidden@example.test");
     expect(raw).toContain("In-Reply-To: <parent@example.test>");
     expect(raw).toContain("References: <root@example.test> <parent@example.test>");
     expect(raw).not.toContain("\r\nX-Injected:");
     expect(raw.endsWith("\r\n\r\nFull body\nSecond line 🌍")).toBe(true);
-    expect(result.content[0].text).toMatch(/draft-synthetic.*message-synthetic.*not been sent/i);
+    expect(firstText(result)).toMatch(/draft-synthetic.*message-synthetic.*not been sent/i);
     expect(result.details).toEqual({
       app: "gmail",
       draftId: "draft-synthetic",
@@ -149,7 +145,7 @@ describe("gws_gmail_create_draft", () => {
 
     expect(result.isError).toBeUndefined();
     expect(result.details).toEqual({ app: "gmail", cancelled: true });
-    expect(result.content[0].text).toMatch(/cancelled.*nothing was sent/i);
+    expect(firstText(result)).toMatch(/cancelled.*nothing was sent/i);
     expect(provider.getClient).not.toHaveBeenCalled();
     expect(create).not.toHaveBeenCalled();
   });
@@ -175,7 +171,7 @@ describe("gws_gmail_create_draft", () => {
     const result = await execute(tool, params);
 
     expect(result.isError).toBe(true);
-    expect(result.content[0].text).toContain("/gws-login gmail");
+    expect(firstText(result)).toContain("/gws-login gmail");
     expect(JSON.stringify(result)).not.toMatch(
       /synthetic-secret|synthetic-client|access_token|client_secret/,
     );

@@ -68,7 +68,7 @@ async function download(
     },
     {
       clientProvider: provider,
-      fs: options.fs,
+      ...(options.fs === undefined ? {} : { fs: options.fs }),
       cwd: options.cwd ?? (() => root),
       temporaryToken: () => token,
     },

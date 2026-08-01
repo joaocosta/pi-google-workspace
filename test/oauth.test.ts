@@ -7,7 +7,6 @@ import {
   createWorkspaceAuth,
   type LoopbackSession,
   type OAuthClient,
-  type OAuthClientFactory,
 } from "../src/auth/oauth.js";
 import { createTokenStore, type OAuthCredentials } from "../src/auth/token-store.js";
 
@@ -119,7 +118,7 @@ describe("workspace OAuth service", () => {
     });
 
     const first = auth.login("gmail", vi.fn());
-    await vi.waitFor(() => expect(callback.waitForCode).toHaveBeenCalled());
+    await vi.waitFor(() => { expect(callback.waitForCode).toHaveBeenCalled(); });
     await expect(auth.login("calendar", vi.fn())).rejects.toThrow("Another Google Workspace login is already in progress.");
     release("fixture-code");
     await first;
@@ -164,7 +163,7 @@ describe("workspace OAuth service", () => {
     const auth = createWorkspaceAuth({
       store,
       apps: createWorkspaceAppRegistry(store),
-      oauthClientFactory: (() => fake.client) as OAuthClientFactory,
+      oauthClientFactory: (() => fake.client),
     });
 
     const client = await auth.getAuthenticatedClient("gmail");

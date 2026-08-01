@@ -32,7 +32,7 @@ describe("extension composition root", () => {
       on: vi.fn((event: string, handler: () => void) => handlers.set(event, handler)),
     };
 
-    expect(() => googleWorkspace(pi as never)).not.toThrow();
+    expect(() => { googleWorkspace(pi as never); }).not.toThrow();
     expect(pi.registerFlag).toHaveBeenCalledWith("gws-enabled", {
       description: "Start with Google Workspace tools enabled",
       type: "boolean",
