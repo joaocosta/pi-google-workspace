@@ -1,19 +1,55 @@
 # Development and validation
 
+## Static analysis
+
+The default analysis is strict, type-aware, and focused on correctness rather than formatting. TypeScript source and tests share the same strict baseline. ESLint covers `src/`, `test/`, and `eslint.config.js`; dependencies, coverage, package archives, Beads state, and `.agent-artifacts/` are excluded.
+
+Use these commands:
+
+- `npm run typecheck` runs the strict TypeScript project without emitting files.
+- `npm run lint` runs read-only ESLint with zero warnings allowed.
+- `npm run lint:fix` applies ESLint's safe autofixes. It is the only analysis command that may modify files.
+- `npm run check` is the canonical read-only static-analysis gate. It runs typecheck and lint sequentially, reports both sets of diagnostics, and fails if either analyzer fails.
+
+For ordinary implementation work, run the autofixer first, review its changes, and then run the aggregate gate once:
+
+```bash
+npm run lint:fix
+git diff
+npm run check
+```
+
+Repeat focused checks only when violations remain. ESLint accepts a narrower file or directory directly, and Vitest accepts test-file paths:
+
+```bash
+npx eslint --cache --cache-location node_modules/.cache/eslint/ --max-warnings 0 src/gmail
+npm test -- test/gmail.test.ts
+```
+
+TypeScript analysis remains project-wide because the files share one project configuration. Start with a read-only `npm run check` instead of autofix when inventorying a repository-wide migration, configuring analyzers, or investigating an unexpected autofix.
+
+ESLint's persistent cache is stored under the ignored `node_modules/.cache/` tree. If cached results appear stale, bypass the cache without modifying files:
+
+```bash
+npx eslint --no-cache --max-warnings 0 src test eslint.config.js
+```
+
 ## Credential-free checks
 
 The automated suite uses temporary filesystem roots, synthetic messages, and mocked Google clients. It does not need or read real Google credentials. Use Node.js 22.19.x or a release from Node.js 24 onward, matching the supported ranges of the development toolchain.
 
-Run installation and validation sequentially so no check reads `node_modules` while npm is replacing it:
+Run installation and validation sequentially so no check reads `node_modules` while npm is replacing it. The clean quality workflow also proves that autofix has no uncommitted work left to do:
 
 ```bash
 npm ci
-npm run typecheck
+npm run lint:fix
+git diff --exit-code
+npm run check
 npm test
 npm pack --dry-run
 ```
 
-If a check reports missing files inside installed packages, remove the incomplete tree and verify npm's cache before reinstalling:
+If `git diff --exit-code` fails, review the autofix changes and include the intended fixes before rerunning validation. If a check reports missing files inside installed packages, remove the incomplete tree and verify npm's cache before reinstalling:
 
 ```bash
 rm -rf node_modules
@@ -21,7 +57,7 @@ npm cache verify
 npm ci
 ```
 
-The pack listing should contain the manifest, license, README, documentation, and `src/` only—not tests, initiative artifacts, credentials, tokens, coverage, or generated tarballs. Never add real account data, authorization URLs/codes, client JSON, token JSON, or token-bearing logs to Git or CI fixtures.
+The pack listing should contain the manifest, license, README, documentation, and `src/` only—not tests, initiative artifacts, analysis caches, credentials, tokens, coverage, or generated tarballs. Never add real account data, authorization URLs/codes, client JSON, token JSON, or token-bearing logs to Git or CI fixtures. Live Google validation is intentionally separate from these automated gates.
 
 ## Optional dedicated-account smoke test
 

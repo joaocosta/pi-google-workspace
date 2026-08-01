@@ -19,6 +19,14 @@ Infer schema paths from existing `googleapis` calls when possible—for example,
 
 Schema inspection and `--help` are safe discovery operations. Do not make authenticated Google Workspace calls unless the user explicitly requests live validation.
 
+## Static analysis
+
+For ordinary implementation work:
+
+1. Run `npm run lint:fix` upfront.
+2. Review the resulting changes.
+3. Run `npm run check` once.
+
 <!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:970c3bf2 -->
 ## Beads Issue Tracker
 
