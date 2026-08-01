@@ -9,6 +9,9 @@
     "google-workspace"
   ],
   "license": "MIT",
+  "engines": {
+    "node": "^22.19.0 || >=24.0.0"
+  },
   "files": [
     "src",
     "docs",

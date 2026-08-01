@@ -2,13 +2,23 @@
 
 ## Credential-free checks
 
-The automated suite uses temporary filesystem roots, synthetic messages, and mocked Google clients. It does not need or read real Google credentials.
+The automated suite uses temporary filesystem roots, synthetic messages, and mocked Google clients. It does not need or read real Google credentials. Use Node.js 22.19.x or a release from Node.js 24 onward, matching the supported ranges of the development toolchain.
+
+Run installation and validation sequentially so no check reads `node_modules` while npm is replacing it:
 
 ```bash
 npm ci
 npm run typecheck
 npm test
 npm pack --dry-run
+```
+
+If a check reports missing files inside installed packages, remove the incomplete tree and verify npm's cache before reinstalling:
+
+```bash
+rm -rf node_modules
+npm cache verify
+npm ci
 ```
 
 The pack listing should contain the manifest, license, README, documentation, and `src/` only—not tests, initiative artifacts, credentials, tokens, coverage, or generated tarballs. Never add real account data, authorization URLs/codes, client JSON, token JSON, or token-bearing logs to Git or CI fixtures.
