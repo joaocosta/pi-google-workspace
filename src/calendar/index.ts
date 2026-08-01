@@ -6,6 +6,7 @@ import {
   createCalendarClientProvider,
   type CalendarClientFactory,
   type CalendarClientProvider,
+  type CalendarRequestOptions,
 } from "./client.js";
 import {
   buildCalendarEvent,
@@ -27,6 +28,10 @@ export interface CalendarDependencies {
   readonly clientFactory?: CalendarClientFactory;
   readonly clientProvider?: CalendarClientProvider;
   readonly time?: CalendarTimeDependencies;
+}
+
+function requestOptions(signal: AbortSignal | undefined): CalendarRequestOptions {
+  return { signal };
 }
 
 function failure(error: unknown, action = "list calendars", calendarId?: string) {
@@ -77,7 +82,7 @@ export function registerCalendar(pi: ExtensionAPI, dependencies: CalendarDepende
             maxResults,
             ...(params.pageToken === undefined ? {} : { pageToken: params.pageToken }),
           },
-          { signal },
+          requestOptions(signal),
         );
         const calendars = (response.data.items ?? []).map((entry) => ({
           id: entry.id ?? null,
@@ -146,9 +151,9 @@ export function registerCalendar(pi: ExtensionAPI, dependencies: CalendarDepende
       try {
         const range = resolveEventRange(
           {
-            timeMin: params.timeMin,
-            timeMax: params.timeMax,
-            timeZone: params.timeZone,
+            ...(params.timeMin === undefined ? {} : { timeMin: params.timeMin }),
+            ...(params.timeMax === undefined ? {} : { timeMax: params.timeMax }),
+            ...(params.timeZone === undefined ? {} : { timeZone: params.timeZone }),
           },
           dependencies.time,
         );
@@ -165,7 +170,7 @@ export function registerCalendar(pi: ExtensionAPI, dependencies: CalendarDepende
             ...(params.query === undefined ? {} : { q: params.query }),
             ...(params.pageToken === undefined ? {} : { pageToken: params.pageToken }),
           },
-          { signal },
+          requestOptions(signal),
         );
         const events = (response.data.items ?? []).map((event) =>
           normalizeCalendarEvent(calendarId, event),
@@ -239,8 +244,8 @@ export function registerCalendar(pi: ExtensionAPI, dependencies: CalendarDepende
           toolCallId,
           {
             summary: params.summary,
-            description: params.description,
-            location: params.location,
+            ...(params.description === undefined ? {} : { description: params.description }),
+            ...(params.location === undefined ? {} : { location: params.location }),
             timing: params.timing,
           },
           dependencies.time,
@@ -250,7 +255,7 @@ export function registerCalendar(pi: ExtensionAPI, dependencies: CalendarDepende
         let calendarName = calendarId;
         let resolvedCalendarId = calendarId;
         try {
-          const metadata = await client.calendarList.get({ calendarId }, { signal });
+          const metadata = await client.calendarList.get({ calendarId }, requestOptions(signal));
           calendarName = metadata.data.summary || metadata.data.id || calendarId;
           resolvedCalendarId = metadata.data.id || calendarId;
           if (
@@ -284,13 +289,13 @@ export function registerCalendar(pi: ExtensionAPI, dependencies: CalendarDepende
                 `Exclusive end: ${built.normalizedEnd.kind === "allDay" ? built.normalizedEnd.date : "invalid"}`,
               ]
             : [
-                `Start: ${built.normalizedStart.dateTime}`,
-                `End: ${built.normalizedEnd.kind === "dateTime" ? built.normalizedEnd.dateTime : "invalid"}`,
-                `Time zone: ${built.normalizedStart.timeZone}`,
+                `Start: ${String(built.normalizedStart.dateTime)}`,
+                `End: ${String(built.normalizedEnd.kind === "dateTime" ? built.normalizedEnd.dateTime : "invalid")}`,
+                `Time zone: ${String(built.normalizedStart.timeZone)}`,
               ];
         const preview = [
           `Calendar: ${calendarName} (${resolvedCalendarId})`,
-          `Summary: ${built.requestBody.summary}`,
+          `Summary: ${String(built.requestBody.summary)}`,
           ...timing,
           `Description: ${description}`,
           `Location: ${location}`,
@@ -308,7 +313,7 @@ export function registerCalendar(pi: ExtensionAPI, dependencies: CalendarDepende
         try {
           const response = await client.events.insert(
             { calendarId, requestBody: built.requestBody },
-            { signal },
+            requestOptions(signal),
           );
           event = response.data;
         } catch (error) {
@@ -318,13 +323,18 @@ export function registerCalendar(pi: ExtensionAPI, dependencies: CalendarDepende
             return failure(error, "create an event", calendarId);
           }
 
+          const eventId = built.requestBody.id;
+          if (!eventId) {
+            throw new Error("Calendar event creation did not produce a deterministic event ID.", {
+              cause: error,
+            });
+          }
           try {
-            const response = await client.events.get(
-              { calendarId, eventId: built.requestBody.id! },
-              { signal },
-            );
-            if (response.data.id !== built.requestBody.id) {
-              throw new Error("The conflicting event did not match the deterministic event ID.");
+            const response = await client.events.get({ calendarId, eventId }, requestOptions(signal));
+            if (response.data.id !== eventId) {
+              throw new Error("The conflicting event did not match the deterministic event ID.", {
+                cause: error,
+              });
             }
             event = response.data;
             idempotent = true;
