@@ -50,7 +50,11 @@ export function createGoogleGmailClient(authClient: OAuthClient): GmailClient {
   if (!authClient.googleAuthClient) {
     throw new Error("Google API authentication transport is unavailable.");
   }
-  return google.gmail({ version: "v1", auth: authClient.googleAuthClient }) as unknown as GmailClient;
+  return google.gmail({ version: "v1", auth: authClient.googleAuthClient });
+}
+
+export function gmailRequestOptions(signal: AbortSignal | undefined): GmailRequestOptions {
+  return signal === undefined ? {} : { signal };
 }
 
 export interface GmailClientProvider {

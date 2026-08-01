@@ -4,6 +4,7 @@ import { sanitizeAuthError, type WorkspaceAuthService } from "../auth/oauth.js";
 import { confirmMutation } from "../extension/confirmation.js";
 import {
   createGmailClientProvider,
+  gmailRequestOptions,
   type GmailClientFactory,
   type GmailClientProvider,
 } from "./client.js";
@@ -116,7 +117,7 @@ export function registerGmail(pi: ExtensionAPI, dependencies: GmailDependencies)
             includeSpamTrash: params.includeSpamTrash === true,
             maxResults: Math.max(1, Math.min(params.maxResults ?? 10, 20)),
           },
-          { signal },
+          gmailRequestOptions(signal),
         );
         const summaries = await Promise.all(
           (response.data.messages ?? []).map(async (message) => {
@@ -128,7 +129,7 @@ export function registerGmail(pi: ExtensionAPI, dependencies: GmailDependencies)
                 format: "metadata",
                 metadataHeaders: ["From", "To", "Subject", "Date"],
               },
-              { signal },
+              gmailRequestOptions(signal),
             );
             const summary = summarizeMessage(full.data);
             return {
@@ -176,7 +177,7 @@ export function registerGmail(pi: ExtensionAPI, dependencies: GmailDependencies)
         const client = await clients.getClient();
         const response = await client.users.messages.get(
           { userId: "me", id, format: "full" },
-          { signal },
+          gmailRequestOptions(signal),
         );
         const message = parseMessage(response.data);
         return {
@@ -295,9 +296,11 @@ export function registerGmail(pi: ExtensionAPI, dependencies: GmailDependencies)
           const response = await client.users.drafts.create(
             {
               userId: "me",
-              requestBody: { message: { raw, threadId: params.threadId } },
+              requestBody: {
+                message: { raw, ...(params.threadId === undefined ? {} : { threadId: params.threadId }) },
+              },
             },
-            { signal },
+            gmailRequestOptions(signal),
           );
           const draftId = response.data.id;
           const messageId = response.data.message?.id;
@@ -358,7 +361,7 @@ export function registerGmail(pi: ExtensionAPI, dependencies: GmailDependencies)
               format: "metadata",
               metadataHeaders: ["Reply-To", "From", "Subject", "Message-ID", "References", "Date"],
             },
-            { signal },
+            gmailRequestOptions(signal),
           );
           const reply = deriveReplyDraft(sourceResponse.data, parentMessageId);
           const preview = [
@@ -398,7 +401,7 @@ export function registerGmail(pi: ExtensionAPI, dependencies: GmailDependencies)
               userId: "me",
               requestBody: { message: { raw, threadId: reply.threadId } },
             },
-            { signal },
+            gmailRequestOptions(signal),
           );
           const draftId = response.data.id;
           const messageId = response.data.message?.id;
@@ -477,11 +480,11 @@ export function registerGmail(pi: ExtensionAPI, dependencies: GmailDependencies)
               format: "metadata",
               metadataHeaders: ["From", "Subject", "Date"],
             },
-            { signal },
+            gmailRequestOptions(signal),
           );
           const message = summarizeMessage(response.data);
           const destination =
-            params.destination[0].toUpperCase() + params.destination.slice(1);
+            params.destination.charAt(0).toUpperCase() + params.destination.slice(1);
           const preview = [
             `Move this Gmail message to ${destination}?`,
             `From: ${message.from}`,
@@ -506,10 +509,16 @@ export function registerGmail(pi: ExtensionAPI, dependencies: GmailDependencies)
           const previousLabelIds = response.data.labelIds ?? [];
           let moved;
           if (params.destination === "trash") {
-            moved = await client.users.messages.trash({ userId: "me", id }, { signal });
+            moved = await client.users.messages.trash(
+              { userId: "me", id },
+              gmailRequestOptions(signal),
+            );
           } else {
             if (previousLabelIds.includes("TRASH")) {
-              await client.users.messages.untrash({ userId: "me", id }, { signal });
+              await client.users.messages.untrash(
+                { userId: "me", id },
+                gmailRequestOptions(signal),
+              );
             }
             const requestBody =
               params.destination === "inbox"
@@ -519,7 +528,7 @@ export function registerGmail(pi: ExtensionAPI, dependencies: GmailDependencies)
                   : { removeLabelIds: ["INBOX", "SPAM"] };
             moved = await client.users.messages.modify(
               { userId: "me", id, requestBody },
-              { signal },
+              gmailRequestOptions(signal),
             );
           }
 

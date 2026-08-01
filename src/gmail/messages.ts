@@ -78,7 +78,7 @@ export function collectAttachmentMetadata(
       attachmentId,
       filename: sourceFilename?.trim()
         ? sourceFilename
-        : `unnamed-attachment-${output.length + 1}`,
+        : `unnamed-attachment-${String(output.length + 1)}`,
       mediaType: part.mimeType ?? "application/octet-stream",
       size: part.body?.size ?? 0,
       ...(contentDisposition ? { contentDisposition } : {}),
@@ -91,13 +91,13 @@ export function collectAttachmentMetadata(
 
 export function summarizeMessage(message: gmail_v1.Schema$Message): GmailMessageSummary {
   return {
-    id: message.id,
-    threadId: message.threadId,
+    ...(message.id === undefined ? {} : { id: message.id }),
+    ...(message.threadId === undefined ? {} : { threadId: message.threadId }),
     from: messageHeader(message, "From"),
     to: messageHeader(message, "To"),
     subject: messageHeader(message, "Subject"),
     date: messageHeader(message, "Date"),
-    snippet: message.snippet,
+    ...(message.snippet === undefined ? {} : { snippet: message.snippet }),
   };
 }
 

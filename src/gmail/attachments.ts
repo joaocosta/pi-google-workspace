@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import * as nodeFs from "node:fs/promises";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
-import type { GmailClientProvider } from "./client.js";
+import { gmailRequestOptions, type GmailClientProvider } from "./client.js";
 
 export const MAX_GMAIL_ATTACHMENT_BYTES = 26_214_400;
 export const MAX_ATTACHMENT_FILENAME_BYTES = 240;
@@ -191,13 +191,13 @@ function validateMediaType(value: unknown): string {
 
 function validateExpectedSize(value: unknown): number | undefined {
   if (value === undefined) return undefined;
-  if (!Number.isSafeInteger(value) || (value as number) < 0) {
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) {
     fail("expectedSize must be a non-negative integer.");
   }
-  if ((value as number) > MAX_GMAIL_ATTACHMENT_BYTES) {
+  if (value > MAX_GMAIL_ATTACHMENT_BYTES) {
     fail("Attachment exceeds the 25 MiB decoded-size limit.");
   }
-  return value as number;
+  return value;
 }
 
 /** Validate all caller hints and derive one destination from an already captured absolute root. */
@@ -252,10 +252,14 @@ export function decodeGmailAttachmentData(data: unknown, returnedSize?: unknown)
   }
 
   if (returnedSize !== undefined && returnedSize !== null) {
-    if (!Number.isSafeInteger(returnedSize) || (returnedSize as number) < 0) {
+    if (
+      typeof returnedSize !== "number" ||
+      !Number.isSafeInteger(returnedSize) ||
+      returnedSize < 0
+    ) {
       fail("Gmail attachment response size is invalid.");
     }
-    if ((returnedSize as number) > MAX_GMAIL_ATTACHMENT_BYTES) {
+    if (returnedSize > MAX_GMAIL_ATTACHMENT_BYTES) {
       fail("Attachment exceeds the 25 MiB decoded-size limit.");
     }
   }
@@ -280,7 +284,7 @@ export function formatIecBytes(sizeBytes: number): string {
   if (!Number.isSafeInteger(sizeBytes) || sizeBytes < 0 || sizeBytes > MAX_GMAIL_ATTACHMENT_BYTES) {
     fail("Attachment result size is invalid.");
   }
-  if (sizeBytes < 1024) return `${sizeBytes} B`;
+  if (sizeBytes < 1024) return `${String(sizeBytes)} B`;
   const units = ["KiB", "MiB"] as const;
   let value = sizeBytes / 1024;
   let unit: (typeof units)[number] = units[0];
@@ -289,11 +293,13 @@ export function formatIecBytes(sizeBytes: number): string {
     unit = units[1];
   }
   const rounded = value >= 10 ? Math.round(value) : Math.round(value * 10) / 10;
-  return `${rounded} ${unit}`;
+  return `${String(rounded)} ${unit}`;
 }
 
 function errorCode(error: unknown): string | undefined {
-  return (error as NodeJS.ErrnoException)?.code;
+  return typeof error === "object" && error !== null && "code" in error && typeof error.code === "string"
+    ? error.code
+    : undefined;
 }
 
 function throwIfCancelled(signal: AbortSignal | undefined): void {
@@ -345,7 +351,7 @@ export async function downloadGmailAttachment(
         messageId: prepared.messageId,
         id: prepared.attachmentId,
       },
-      { signal },
+      gmailRequestOptions(signal),
     );
   } catch (error) {
     if (error instanceof GmailAttachmentDownloadError) throw error;
