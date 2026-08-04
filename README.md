@@ -94,7 +94,7 @@ After installation and `/reload`, authorize only the apps you need, then explici
 /gws on
 ```
 
-Each login prints an authorization URL for you to open manually. The package does not launch a browser. It listens on a localhost callback using a transient port and intentionally has no login timeout; cancel an abandoned operation externally and retry. Gmail and Calendar may be authorized to different Google accounts because identity scopes and account matching are intentionally absent.
+Each login copies the complete authorization URL to your clipboard for you to paste into a browser. If clipboard access fails, it prints the URL as a fallback. The package does not launch a browser. It listens on a localhost callback using a transient port and intentionally has no login timeout; cancel an abandoned operation externally and retry. Gmail and Calendar may be authorized to different Google accounts because identity scopes and account matching are intentionally absent.
 
 For a one-shot non-interactive run, supply `--gws-enabled` after authorizing the needed app:
 

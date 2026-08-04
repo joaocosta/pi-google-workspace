@@ -9,11 +9,16 @@ type CommandOptions = {
   handler(args: string, ctx: ExtensionCommandContext): Promise<void>;
 };
 
-function harness(overrides: Partial<WorkspaceAuthService> = {}) {
+function harness(
+  overrides: Partial<WorkspaceAuthService> = {},
+  writeClipboard = vi.fn(async () => undefined),
+) {
   const apps = createWorkspaceAppRegistry(createTokenStore({ homeRoot: "/fixture-home" }));
   const auth: WorkspaceAuthService = {
     apps,
-    login: vi.fn(async (_app, showUrl) => showUrl("https://accounts.example/safe-url")),
+    login: vi.fn(async (_app, showUrl) => {
+      await showUrl("https://accounts.example/safe-url");
+    }),
     getAuthenticatedClient: vi.fn(),
     getStatus: vi.fn(async () => ({
       client: "present" as const,
@@ -33,8 +38,8 @@ function harness(overrides: Partial<WorkspaceAuthService> = {}) {
       toolsEnabled = enabled;
     }),
   };
-  registerAuthCommands(pi as never, auth, toolControl);
-  return { auth, commands, pi, toolControl };
+  registerAuthCommands(pi as never, auth, toolControl, writeClipboard);
+  return { auth, commands, pi, toolControl, writeClipboard };
 }
 
 function context(options: { hasUI?: boolean; selected?: string; confirmed?: boolean } = {}) {
@@ -77,15 +82,32 @@ describe("shared authentication commands", () => {
     expect(invalid.ui.notify).toHaveBeenCalledWith("Usage: /gws [on|off]", "error");
   });
 
-  it("uses a selector for omitted interactive login and displays the manual URL", async () => {
-    const { auth, commands } = harness();
+  it("uses a selector for omitted interactive login and copies the authorization URL", async () => {
+    const { auth, commands, writeClipboard } = harness();
     const { ctx, ui } = context({ selected: "Calendar (calendar)" });
 
     await commands.get("gws-login")!.handler("", ctx);
 
     expect(ui.select).toHaveBeenCalledWith("Select an app to login", ["Gmail (gmail)", "Calendar (calendar)"]);
     expect(auth.login).toHaveBeenCalledWith("calendar", expect.any(Function));
-    expect(ui.notify).toHaveBeenCalledWith(expect.stringContaining("https://accounts.example/safe-url"), "info");
+    expect(writeClipboard).toHaveBeenCalledWith("https://accounts.example/safe-url");
+    expect(ui.notify).toHaveBeenCalledWith(
+      "Calendar authorization URL copied to the clipboard. Paste it into your browser.",
+      "info",
+    );
+  });
+
+  it("shows the full URL when clipboard copying fails", async () => {
+    const writeClipboard = vi.fn(async () => { throw new Error("clipboard unavailable"); });
+    const { commands } = harness({}, writeClipboard);
+    const { ctx, ui } = context();
+
+    await commands.get("gws-login")!.handler("gmail", ctx);
+
+    expect(ui.notify).toHaveBeenCalledWith(
+      "Could not copy the Gmail authorization URL. Open it manually:\nhttps://accounts.example/safe-url",
+      "warning",
+    );
   });
 
   it("returns usage without authorizing when an app is omitted headlessly", async () => {

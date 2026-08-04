@@ -1,6 +1,7 @@
-import type {
-  ExtensionAPI,
-  ExtensionCommandContext,
+import {
+  copyToClipboard,
+  type ExtensionAPI,
+  type ExtensionCommandContext,
 } from "@earendil-works/pi-coding-agent";
 import { WORKSPACE_APP_KEYS, type WorkspaceAppKey } from "../auth/paths.js";
 import {
@@ -15,6 +16,8 @@ export interface WorkspaceToolControl {
   isEnabled(): boolean;
   setEnabled(enabled: boolean): void;
 }
+
+export type ClipboardWriter = (text: string) => Promise<void>;
 
 function parseApp(argument: string): WorkspaceAppKey | undefined {
   const normalized = argument.trim().toLowerCase();
@@ -68,6 +71,7 @@ export function registerAuthCommands(
   pi: ExtensionAPI,
   auth: WorkspaceAuthService,
   tools: WorkspaceToolControl,
+  writeClipboard: ClipboardWriter = copyToClipboard,
 ): void {
   const completions = (prefix: string) => {
     const matches = WORKSPACE_APP_KEYS.filter((app) => app.startsWith(prefix));
@@ -101,8 +105,19 @@ export function registerAuthCommands(
       const app = await selectApp(args, "login", auth, ctx);
       if (!app) return;
       try {
-        await auth.login(app, (url) => {
-          ctx.ui.notify(`Open this URL in your browser to authorize ${auth.apps[app].displayName}:\n${url}`, "info");
+        await auth.login(app, async (url) => {
+          try {
+            await writeClipboard(url);
+            ctx.ui.notify(
+              `${auth.apps[app].displayName} authorization URL copied to the clipboard. Paste it into your browser.`,
+              "info",
+            );
+          } catch {
+            ctx.ui.notify(
+              `Could not copy the ${auth.apps[app].displayName} authorization URL. Open it manually:\n${url}`,
+              "warning",
+            );
+          }
         });
         ctx.ui.notify(`${auth.apps[app].displayName} authentication saved.`, "info");
       } catch (error) {

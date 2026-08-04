@@ -40,7 +40,10 @@ export interface AuthStatus {
 
 export interface WorkspaceAuthService {
   readonly apps: WorkspaceAppRegistry;
-  login(app: WorkspaceAppKey, showAuthorizationUrl: (url: string) => void): Promise<void>;
+  login(
+    app: WorkspaceAppKey,
+    showAuthorizationUrl: (url: string) => void | Promise<void>,
+  ): Promise<void>;
   getAuthenticatedClient(app: WorkspaceAppKey): Promise<OAuthClient>;
   getStatus(): Promise<AuthStatus>;
   logout(app: WorkspaceAppKey): Promise<void>;
@@ -254,7 +257,7 @@ export function createWorkspaceAuth(options: WorkspaceAuthOptions): WorkspaceAut
           prompt: "consent",
           scope: apps[app].scopes,
         });
-        showAuthorizationUrl(authorizationUrl);
+        await showAuthorizationUrl(authorizationUrl);
 
         let code: string;
         try {
